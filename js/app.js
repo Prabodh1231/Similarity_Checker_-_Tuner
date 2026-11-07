@@ -60,7 +60,12 @@ const el = {
   tickModerate: $("tick-moderate"),
   tickHigh: $("tick-high"),
   settingsNote: $("settings-note"),
+  tuning: $("tuning"),
   tuningState: $("tuning-state"),
+  tuningOpen: $("tuning-open"),
+  tuningOpenState: $("tuning-open-state"),
+  tuningIntakeMount: $("tuning-intake-mount"),
+  tuningReportMount: $("tuning-report-mount"),
   tuningControls: $("tuning-controls"),
   tuningCompare: $("tuning-compare"),
   tuningStatus: $("tuning-status"),
@@ -359,6 +364,7 @@ function showView(view) {
   el.intake.hidden = view !== "intake";
   el.working.hidden = view !== "working";
   el.report.hidden = view !== "report";
+  if (view === "intake" || view === "report") placeTuning(view);
   const heading =
     view === "intake" ? $("intake-title") : view === "working" ? el.workingTitle : $("findings-title");
   if (heading) {
@@ -1259,6 +1265,22 @@ function readTuning() {
   return normalizeSettings(read);
 }
 
+/**
+ * Moves the single Tune matching panel between its intake and report homes,
+ * so both screens share the same controls, ids and settings store. On the
+ * intake screen the "default settings would give" line (which needs a
+ * finished comparison) is hidden; every actual control stays live.
+ */
+function placeTuning(view) {
+  const onIntake = view === "intake";
+  const mount = onIntake ? el.tuningIntakeMount : el.tuningReportMount;
+  if (el.tuning.parentNode !== mount) mount.append(el.tuning);
+  el.tuning.classList.toggle("on-intake", onIntake);
+  el.tuningCompare.hidden = onIntake;
+  if (onIntake) el.tuningStatus.textContent = "";
+  el.tuningOpen.setAttribute("aria-expanded", String(el.tuning.open));
+}
+
 /** Readies the panel for a new report. */
 function renderTuning() {
   syncTuning(state.base.settings);
@@ -1284,6 +1306,7 @@ function updateSettingsNotes() {
   el.intakeSettings.hidden = !custom;
   el.tuningState.textContent = custom ? "Custom settings" : "Default settings";
   el.tuningState.classList.toggle("custom", custom);
+  el.tuningOpenState.textContent = custom ? "Custom settings" : "Default settings";
   el.tuningReset.disabled = !custom;
 }
 
@@ -1292,6 +1315,8 @@ function applySettings(next) {
   state.settings = next;
   saveSettings(next);
   updateSettingsNotes();
+
+  syncTuning(next);
 
   const base = state.base;
   if (!base || !state.report) return;
@@ -1391,6 +1416,15 @@ el.tuningReset.addEventListener("click", () => {
   applySettings(normalizeSettings());
   syncTuning(state.settings);
 });
+el.tuningOpen.addEventListener("click", () => {
+  placeTuning("report");
+  el.tuning.open = true;
+  el.tuningOpen.setAttribute("aria-expanded", "true");
+  el.tuning.querySelector("summary").focus();
+});
+el.tuning.addEventListener("toggle", () => {
+  el.tuningOpen.setAttribute("aria-expanded", String(el.tuning.open));
+});
 el.intakeReset.addEventListener("click", () => applySettings(normalizeSettings()));
 
 /* ---------- Report actions ---------- */
@@ -1422,5 +1456,7 @@ el.restart.addEventListener("click", () => {
 
 state.settings = loadSettings();
 buildTuning();
+syncTuning(state.settings);
+placeTuning("intake");
 updateSettingsNotes();
 renderIntake();

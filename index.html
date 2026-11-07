@@ -100,6 +100,8 @@
           </section>
         </div>
 
+        <div id="tuning-intake-mount" class="tuning-mount tuning-mount-intake"></div>
+
         <div class="intake-actions">
           <button type="button" class="btn-ink" id="compare" disabled>
             <span id="compare-label">Compare</span>
@@ -174,6 +176,11 @@
             <span id="flagged"></span>
           </p>
 
+          <button type="button" class="btn-ink small tuning-open" id="tuning-open" aria-controls="tuning" aria-expanded="false">
+            <span>Tune matching</span>
+            <span class="tuning-open-state" id="tuning-open-state">Default settings</span>
+          </button>
+
           <div class="spectrum" aria-hidden="true">
             <div class="spectrum-bar" id="spectrum"></div>
             <div class="spectrum-ticks">
@@ -184,6 +191,8 @@
 
           <p class="settings-note" id="settings-note" hidden></p>
 
+          <div id="tuning-report-mount" class="tuning-mount"></div>
+
           <details class="tuning" id="tuning">
             <summary>
               <span>Tune matching</span>
@@ -191,10 +200,10 @@
             </summary>
             <div class="tuning-body">
               <p class="tuning-intro">
-                Try stricter or looser matching and watch the score and
-                highlights change. Only the matching re-runs; PDFs aren't read
-                again. Your settings are remembered for future checks in this
-                browser.
+                Set matching before you compare, or try stricter or looser
+                matching on a report and watch the score and highlights change.
+                On a report only the matching re-runs; PDFs aren't read again.
+                Your settings are remembered for future checks in this browser.
               </p>
               <div id="tuning-controls"></div>
               <div class="tuning-foot">

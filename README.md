@@ -92,10 +92,12 @@ tolerates a few wrong words because a match needs 8 shared words out of 11.
 
 ## Tune matching (settings sandbox)
 
-The report has a **Tune matching** panel under the score. Every change
-re-runs only the matching on the text already read, so it takes tens of
-milliseconds; PDFs aren't read again and OCR isn't repeated. The app keeps each
-source's cleaned text after a comparison for this.
+The same **Tune matching** panel appears on the start screen, above
+**Compare**, and in the report, where the **Tune matching** button under the
+score opens it. You can adjust it before a comparison or afterwards. In the
+report, every change re-runs only the matching on the text already read, so it
+takes tens of milliseconds; PDFs aren't read again and OCR isn't repeated. The
+app keeps each source's cleaned text after a comparison for this.
 
 | Setting | Default | Effect |
 |---|---|---|
@@ -109,10 +111,12 @@ source's cleaned text after a comparison for this.
 | Moderate from / High from | 10% / 25% | Where the level labels change; applied instantly, no re-match |
 
 - Sources keep their colour and on/off state while you adjust.
-- With custom settings, the panel shows what the **default settings would give**,
-  for the same sources switched on.
+- In the report, with custom settings, the panel shows what the **default
+  settings would give**, for the same sources switched on. That comparison is
+  hidden on the start screen, where no comparison has run yet.
 - Settings are remembered in this browser and used for future comparisons.
-  The start screen says when custom settings are on, with a one-click way back.
+  The start screen's panel (and its note) says when custom settings are on,
+  with a one-click way back.
 - With custom settings, the report shows (and prints) a note listing them, so a
   shared report always says how it was made.
 - Settings are checked and clamped (`normalizeSettings` in `js/matching.js`),

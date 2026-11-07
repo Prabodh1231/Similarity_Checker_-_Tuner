@@ -866,12 +866,44 @@ h1 em {
   color: var(--ink-soft);
 }
 
-/* Tune matching panel */
+/* Tune matching panel: one panel, moved between the intake and report mounts */
+.tuning-mount:empty {
+  display: none;
+}
+
+.tuning-mount-intake {
+  margin-top: 24px;
+}
+
+.tuning-mount-intake .tuning {
+  margin-bottom: 0;
+}
+
+.tuning-open {
+  width: 100%;
+  justify-content: space-between;
+  margin: 0 0 18px;
+}
+
+.tuning-open-state {
+  font-size: 12px;
+  opacity: 0.75;
+}
+
 .tuning {
   margin: 0 0 26px;
-  border: 1px solid var(--rule);
+  border: 1.5px solid var(--ink);
   border-radius: var(--radius);
   background: var(--paper);
+  box-shadow: 3px 3px 0 var(--rule-soft);
+}
+
+.tuning summary {
+  background: var(--desk-deep);
+}
+
+.tuning.on-intake .tuning-compare {
+  display: none;
 }
 
 .tuning summary {
@@ -1519,6 +1551,7 @@ h1 em {
   .switch,
   #toggle-all,
   .tuning,
+  .tuning-open,
   .tooltip {
     display: none !important;
   }
