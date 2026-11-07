@@ -1,8 +1,12 @@
-# Private Similarity Check
+<p align="center">
+  <img src="assets/matchmark-logo.png" alt="MatchMark: Know what's yours." width="480" />
+</p>
 
-(Working title; the product name and icon are still to be decided.)
+# MatchMark
 
-Compares one Word manuscript (`.docx`) with any number of source PDFs, entirely
+*Know what's yours.*
+
+MatchMark compares one Word manuscript (`.docx`) with any number of source PDFs, entirely
 in the browser. Nothing is uploaded: PDFs are read with PDF.js and the
 manuscript with Mammoth, inside the tab.
 

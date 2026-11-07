@@ -1,1 +1,1 @@
-{"type":"module","private":true,"scripts":{"test":"node --test tests/*.test.mjs"}}
+{"name":"matchmark","description":"MatchMark: Know what's yours. In-browser similarity checker for a Word manuscript against your own PDF sources.","type":"module","private":true,"scripts":{"test":"node --test tests/*.test.mjs"}}
