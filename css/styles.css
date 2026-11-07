@@ -1,24 +1,24 @@
 /* ---------- Tokens ---------- */
 :root {
-  --desk: #ece5d8;
-  --desk-deep: #e2d9c8;
-  --paper: #fffdf7;
-  --ink: #1f1b16;
-  --ink-soft: #5d554a;
-  --ink-faint: #8c8273;
-  --rule: #d3c8b6;
-  --rule-soft: #e4dccd;
-  --pen: #b0281d;
-  --pen-soft: #f3d9d3;
-  --level-low: #2e7a4c;
-  --level-moderate: #a5620a;
-  --level-high: #b0281d;
-  --shadow: 0 1px 0 rgba(31, 27, 22, 0.06), 0 18px 40px -24px rgba(31, 27, 22, 0.35);
+  --desk: #e8e8e6;
+  --desk-deep: #d7d7d2;
+  --paper: #f7f7f5;
+  --ink: #1c1e1d;
+  --ink-soft: #404544;
+  --ink-faint: #626a68;
+  --rule: #c0c4c1;
+  --rule-soft: #d9dcd9;
+  --pen: #056a67;
+  --pen-soft: #c9e8e4;
+  --level-low: #256d38;
+  --level-moderate: #8a5200;
+  --level-high: #b42318;
+  --shadow: 0 1px 0 rgba(28, 30, 29, 0.06), 0 18px 40px -24px rgba(28, 30, 29, 0.35);
 
   /* The manuscript page is always paper-light so highlight inks read the same */
-  --page: #fffdf7;
-  --page-ink: #1f1b16;
-  --page-rule: #ead9d3;
+  --page: #fafcfb;
+  --page-ink: #1c1e1d;
+  --page-rule: #d9e6e2;
 
   --serif: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Palatino, Georgia, serif;
   --label: Bahnschrift, "DIN Alternate", "Roboto Condensed", "Arial Narrow", system-ui, sans-serif;
@@ -28,36 +28,36 @@
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --desk: #1a1815;
-    --desk-deep: #23201c;
-    --paper: #26231f;
-    --ink: #efe8dc;
-    --ink-soft: #b9af9f;
-    --ink-faint: #8a8172;
-    --rule: #3d3832;
-    --rule-soft: #322e29;
-    --pen: #ef7a6a;
-    --pen-soft: #4a2723;
-    --level-low: #7fcf9b;
+    --desk: #141717;
+    --desk-deep: #0e1111;
+    --paper: #1f2424;
+    --ink: #edf2f1;
+    --ink-soft: #b9c6c3;
+    --ink-faint: #8fa09c;
+    --rule: #333d3b;
+    --rule-soft: #262e2c;
+    --pen: #5ed6c8;
+    --pen-soft: #173f3b;
+    --level-low: #7ed99a;
     --level-moderate: #f0b45a;
-    --level-high: #ef7a6a;
+    --level-high: #ff8a7a;
     --shadow: 0 1px 0 rgba(0, 0, 0, 0.3), 0 18px 40px -20px rgba(0, 0, 0, 0.7);
   }
 }
 :root[data-theme="dark"] {
-  --desk: #1a1815;
-  --desk-deep: #23201c;
-  --paper: #26231f;
-  --ink: #efe8dc;
-  --ink-soft: #b9af9f;
-  --ink-faint: #8a8172;
-  --rule: #3d3832;
-  --rule-soft: #322e29;
-  --pen: #ef7a6a;
-  --pen-soft: #4a2723;
-  --level-low: #7fcf9b;
+  --desk: #141717;
+  --desk-deep: #0e1111;
+  --paper: #1f2424;
+  --ink: #edf2f1;
+  --ink-soft: #b9c6c3;
+  --ink-faint: #8fa09c;
+  --rule: #333d3b;
+  --rule-soft: #262e2c;
+  --pen: #5ed6c8;
+  --pen-soft: #173f3b;
+  --level-low: #7ed99a;
   --level-moderate: #f0b45a;
-  --level-high: #ef7a6a;
+  --level-high: #ff8a7a;
   --shadow: 0 1px 0 rgba(0, 0, 0, 0.3), 0 18px 40px -20px rgba(0, 0, 0, 0.7);
 }
 
