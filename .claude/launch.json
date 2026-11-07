@@ -6,6 +6,12 @@
       "runtimeExecutable": "python",
       "runtimeArgs": ["-m", "http.server", "5520", "--bind", "127.0.0.1"],
       "port": 5520
+    },
+    {
+      "name": "matchmark-preview",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "http.server", "5530", "--bind", "127.0.0.1"],
+      "port": 5530
     }
   ]
 }
