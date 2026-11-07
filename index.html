@@ -103,6 +103,7 @@
         <div id="tuning-intake-mount" class="tuning-mount tuning-mount-intake"></div>
 
         <div class="intake-actions">
+          <button type="button" class="btn-sample" id="try-sample">Try a sample</button>
           <button type="button" class="btn-ink" id="compare" disabled>
             <span id="compare-label">Compare</span>
             <span class="arrow" aria-hidden="true">→</span>
@@ -167,6 +168,7 @@
       <!-- Step 3: report -->
       <section id="report" class="report" hidden aria-label="Similarity report">
         <aside class="findings" aria-labelledby="findings-title">
+          <div class="score-card">
           <p class="kicker" id="findings-title">Similarity</p>
           <p class="score" id="score">
             <span id="score-value">0</span><span class="score-unit">%</span>
@@ -176,10 +178,19 @@
             <span id="flagged"></span>
           </p>
 
+          <div class="match-nav" id="match-nav" aria-label="Match navigation">
+            <button type="button" class="match-nav-btn" id="match-prev" aria-label="Previous match">← <span class="nav-word">Previous match</span><span class="nav-short">Prev</span></button>
+            <span class="match-count" id="match-count" role="status" aria-live="polite">No matches</span>
+            <button type="button" class="match-nav-btn" id="match-next" aria-label="Next match"><span class="nav-word">Next match</span><span class="nav-short">Next</span> →</button>
+            <p class="match-summary" id="match-summary" aria-live="polite"></p>
+          </div>
+
           <button type="button" class="btn-ink small tuning-open" id="tuning-open" aria-controls="tuning" aria-expanded="false">
             <span>Tune matching</span>
             <span class="tuning-open-state" id="tuning-open-state">Default settings</span>
           </button>
+          <button type="button" class="sources-open" id="sources-open">Sources / Tune matching</button>
+          </div>
 
           <div class="spectrum" aria-hidden="true">
             <div class="spectrum-bar" id="spectrum"></div>
@@ -214,6 +225,8 @@
             </div>
           </details>
 
+          <details class="sources-details" id="sources-details" open>
+            <summary class="sources-summary">Sources</summary>
           <div class="sources-head">
             <h3>Sources</h3>
             <button type="button" class="text-btn" id="toggle-all">Hide all</button>
@@ -224,6 +237,7 @@
             <h4 class="quiet-title">No overlap or unreadable</h4>
             <ul class="quiet-list" id="quiet-list"></ul>
           </div>
+          </details>
 
           <p class="fineprint">
             Hover any highlight to see its source. Switching a source off removes

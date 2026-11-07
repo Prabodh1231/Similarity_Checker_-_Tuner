@@ -17,6 +17,14 @@ python -m http.server 5510
 
 Then open <http://localhost:5510>. (`npx serve .` works too.)
 
+No files of your own handy? Press **Try a sample** on the start screen. It
+fetches the bundled sample manuscript and sources from `samples/`
+(`planning-brief.docx` plus three PDFs), loads them exactly as if you had
+picked them, and leaves you to press **Compare** yourself — nothing runs
+automatically. Because it uses `fetch()`, it needs the page served over a
+local server as above; opened from `file://` it explains that instead of
+failing silently.
+
 To try it without your own files, run `python tests/make_fixtures.py`. It writes a
 sample manuscript, text PDFs, a nested `library/` folder and, if Pillow is
 installed, scanned PDFs (including a 30-page one in `ocr-benchmark/`) to
@@ -84,7 +92,22 @@ tolerates a few wrong words because a match needs 8 shared words out of 11.
   a short excerpt (about 25 words) of the matched source passage, with the
   shared words emphasised. Page numbers come from word offsets recorded per
   page (text layer and OCR pages alike) when the PDF was first read, so they
-  survive re-matching. On touch screens, tap a highlight instead.
+  survive re-matching. On touch screens, tap a highlight instead; tap
+  anywhere else, or press Escape, to dismiss it.
+- **Move through matches** with the **Previous match** / **Next match**
+  buttons and the "Match 3 of 12" counter next to the score (or the keys
+  `n`/`j` and `p`/`k` outside form fields). Highlights are no longer
+  individual tab stops. The current passage is outlined, scrolled into view
+  (gently, unless reduced motion is preferred), named with its source and
+  page in a live summary, and its tooltip is pinned once scrolling settles.
+  The passage list is rebuilt whenever sources are switched off, matching is
+  re-run or settings change, keeping the current position where it can;
+  with nothing switched on it says "No matches".
+- **On a narrow screen** (760 px and below) the score becomes a compact
+  sticky bar with the percentage, level, match navigator and a **Sources /
+  Tune matching** button; the manuscript comes next, and Sources and Tune
+  matching follow it as collapsible sections that start collapsed. Tap
+  targets are at least 44 px and nothing scrolls sideways at phone widths.
 - **Switch a source off** with its toggle. Its highlights disappear, its
   percentage is replaced by "off", and the overall score is recalculated
   without it. Words it shared with another source switch to that source's
@@ -206,12 +229,15 @@ js/manuscript.js         DOCX → HTML → one <span> per word
 js/matcher.worker.js     PDF text extraction, OCR of scanned pages and matching, off the main thread
 js/matching.js           the matching algorithm (pure functions)
 js/passages.js           page boundaries, offset→page lookup, passage excerpts (pure functions)
+js/navigate.js           match-navigator passages, wrap-around, shortcuts (pure functions)
 js/export.js             CSV/JSON serialisation of a report (pure functions)
 js/ocr-cache.js          remembers OCR text per page in IndexedDB
 js/scan-detect.js        finds whether a PDF contains images, from its raw bytes
 js/vendor/               PDF.js 4.6.82, Mammoth, Tesseract.js 6.0.1 (core 6.1.2, English data)
 tests/matching.test.mjs  unit tests, including exact checks against brute force across settings
+samples/                 the bundled manuscript and PDFs loaded by "Try a sample"
 tests/passages.test.mjs  page lookup, page lists and source excerpts
+tests/navigate.test.mjs  navigator grouping, wrap-around, position keeping, shortcuts
 tests/export.test.mjs    JSON/CSV export, including formula-injection guards
 tests/intake.test.mjs    folder walking (nested, batched, unreadable files) and sorting
 tests/scan-detect.test.mjs  image detection, including real fixture PDFs

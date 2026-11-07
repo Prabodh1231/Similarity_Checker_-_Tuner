@@ -14,6 +14,16 @@ import {
   groupWordIds,
   pagesForWordOffsets,
 } from "./passages.js";
+import {
+  buildPassages,
+  matchCounterText,
+  nextPassageIndex,
+  passageIndexForWord,
+  previousPassageIndex,
+  resolvePassageIndex,
+  scrollBehavior,
+  shortcutAction,
+} from "./navigate.js";
 import { serializeExportCsv, serializeExportJson } from "./export.js";
 import { docxToHtml, buildManuscript } from "./manuscript.js";
 import { collectEntries, fromFileList, sortIncoming, splitPath } from "./intake.js";
@@ -53,6 +63,7 @@ const el = {
   pdfClear: $("pdf-clear"),
   compare: $("compare"),
   compareLabel: $("compare-label"),
+  trySample: $("try-sample"),
   intakeStatus: $("intake-status"),
   intake: $("intake"),
   working: $("working"),
@@ -97,6 +108,12 @@ const el = {
   pageMeta: $("page-meta"),
   manuscript: $("manuscript"),
   tooltip: $("tooltip"),
+  matchPrev: $("match-prev"),
+  matchNext: $("match-next"),
+  matchCount: $("match-count"),
+  matchSummary: $("match-summary"),
+  sourcesDetails: $("sources-details"),
+  sourcesOpen: $("sources-open"),
 };
 
 const state = {
@@ -312,6 +329,53 @@ el.docxRemove.addEventListener("click", () => {
   state.docx = null;
   renderIntake();
 });
+
+/* ---------- Try a sample: bundled files through the normal intake path ---------- */
+
+const SAMPLE_URLS = [
+  "samples/planning-brief.docx",
+  "samples/coastal-risk-review.pdf",
+  "samples/urban-form-and-resilience.pdf",
+  "samples/maritime-history-volume-2.pdf",
+];
+
+el.trySample.addEventListener("click", loadSamples);
+
+async function loadSamples() {
+  el.trySample.disabled = true;
+  setStatus("Loading the sample files…");
+  try {
+    const files = await Promise.all(
+      SAMPLE_URLS.map(async (url) => {
+        const response = await fetch(url);
+        if (!response.ok) throw new Error(`${url}: ${response.status}`);
+        const blob = await response.blob();
+        const name = url.split("/").at(-1);
+        const type =
+          blob.type ||
+          (name.endsWith(".docx")
+            ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            : "application/pdf");
+        // A fixed timestamp lets the intake dedupe recognise a second load
+        return new File([blob], name, { type, lastModified: 0 });
+      })
+    );
+    await acceptFiles(fromFileList(files));
+    if (state.docx && state.pdfs.size > 0) {
+      setStatus("Sample files loaded. Press Compare when you're ready.");
+      el.compare.focus();
+    }
+  } catch (error) {
+    console.error(error);
+    setStatus(
+      "Couldn't load the sample files. Browsers block fetch() when the page is opened straight from disk (file://); " +
+        "serve this folder instead, for example with `python -m http.server`, then try again.",
+      true
+    );
+  } finally {
+    el.trySample.disabled = false;
+  }
+}
 
 el.pdfClear.addEventListener("click", () => {
   state.pdfs.clear();
@@ -845,8 +909,20 @@ function renderReport(manuscript, sources, quiet) {
   el.pageTitle.textContent = state.docx.file.name;
   el.pageMeta.textContent = `${numberFormat.format(manuscript.words.length)} words`;
   renderTuning();
+  // A fresh comparison starts with no current match; rematches keep theirs
+  navIndex = -1;
+  navAnchorStart = null;
+  syncResponsivePanels();
   showSources(sources, quiet);
 }
+
+const mobileReportQuery = window.matchMedia("(max-width: 760px)");
+
+/** On narrow screens Sources starts collapsed; on desktop it stays open. */
+function syncResponsivePanels() {
+  if (el.sourcesDetails) el.sourcesDetails.open = !mobileReportQuery.matches;
+}
+mobileReportQuery.addEventListener?.("change", syncResponsivePanels);
 
 /** Shows a set of sources on the already-rendered manuscript. */
 function showSources(sources, quiet) {
@@ -1004,7 +1080,7 @@ function applyToggles() {
     const names = list
       .filter((i) => sources[i].enabled)
       .map((i) => splitPath(sources[i].path).base);
-    span.tabIndex = 0;
+    // Highlights are not tab stops: the match navigator is the keyboard path
     span.setAttribute("aria-label", `${span.textContent} — found in ${names.join(", ")}`);
   }
 
@@ -1064,6 +1140,7 @@ function applyToggles() {
   const anyOn = sources.some((s) => s.enabled);
   el.toggleAll.textContent = anyOn ? "Hide all" : "Show all";
   el.toggleAll.hidden = sources.length === 0;
+  refreshNavigator();
 }
 
 el.toggleAll.addEventListener("click", () => {
@@ -1097,12 +1174,121 @@ function jumpTo(s) {
   if (!source.enabled) return;
   let first = Infinity;
   for (const id of source.ids) if (id < first) first = id;
+  const index = passageIndexForWord(navPassages, first);
+  if (index >= 0) return goToMatch(index);
   const span = state.report.spans[first];
-  span.scrollIntoView({ behavior: "smooth", block: "center" });
+  const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  span.scrollIntoView({ behavior: scrollBehavior(reduced), block: "center" });
   span.classList.remove("flash");
   void span.offsetWidth; // restart the animation
   span.classList.add("flash");
 }
+
+/* ---------- Match navigator ---------- */
+
+let navPassages = [];
+let navIndex = -1;
+let navAnchorStart = null;
+let navTooltipTimer = 0;
+
+function clearCurrentMatch() {
+  for (const node of el.manuscript.querySelectorAll(".current")) {
+    node.classList.remove("current");
+  }
+}
+
+/** "smith.pdf, p. 4" style summary of where a passage was found. */
+function passageSummary(passage) {
+  const report = state.report;
+  if (!report || !passage) return "";
+  const bySource = new Map();
+  for (const id of passage.ids) {
+    const s = report.primary.get(id);
+    if (s === undefined) continue;
+    if (!bySource.has(s)) bySource.set(s, []);
+    bySource.get(s).push(id);
+  }
+  const parts = Array.from(bySource, ([s, ids]) => {
+    const source = report.sources[s];
+    const pages = pagesForWordOffsets(
+      source.pageBoundaries,
+      ids.map((id) => source.positions.get(id)).filter((v) => v !== undefined)
+    );
+    return `${splitPath(source.path).base}${pages.length ? `, ${formatPagesList(pages)}` : ", page unknown"}`;
+  });
+  return parts.length ? `Found in ${parts.join("; ")}` : "";
+}
+
+function updateNavigatorUI() {
+  el.matchPrev.disabled = navPassages.length === 0;
+  el.matchNext.disabled = navPassages.length === 0;
+  el.matchCount.textContent = matchCounterText(navIndex, navPassages.length);
+  el.matchSummary.textContent =
+    navIndex >= 0 ? passageSummary(navPassages[navIndex]) : "";
+}
+
+/**
+ * Rebuilds the passage list from the sources currently switched on. Called
+ * after every re-render (toggles, rematches, settings changes); the current
+ * passage is followed by its start word, so the position stays sensible.
+ */
+function refreshNavigator() {
+  clearCurrentMatch();
+  if (!state.report?.primary) {
+    navPassages = [];
+    navIndex = -1;
+    navAnchorStart = null;
+    updateNavigatorUI();
+    return;
+  }
+  navPassages = buildPassages(state.report.primary.keys());
+  navIndex = resolvePassageIndex(navPassages, navIndex, navAnchorStart);
+  navAnchorStart = navIndex >= 0 ? navPassages[navIndex].start : null;
+  if (navIndex >= 0) {
+    for (const id of navPassages[navIndex].ids) {
+      state.report.spans[id]?.classList.add("current");
+    }
+  }
+  updateNavigatorUI();
+}
+
+function goToMatch(index) {
+  const passage = navPassages[index];
+  if (!passage || !state.report) return;
+  navIndex = index;
+  navAnchorStart = passage.start;
+  clearCurrentMatch();
+  for (const id of passage.ids) state.report.spans[id]?.classList.add("current");
+  updateNavigatorUI();
+
+  const span = state.report.spans[passage.start];
+  if (!span) return;
+  const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  span.scrollIntoView({ behavior: scrollBehavior(reduced), block: "center" });
+  // Pin the tooltip once scrolling settles (scrolling itself hides it)
+  clearTimeout(navTooltipTimer);
+  navTooltipTimer = setTimeout(
+    () => {
+      if (navPassages[navIndex] === passage) showTooltip(span);
+    },
+    reduced ? 50 : 500
+  );
+}
+
+el.matchPrev.addEventListener("click", () =>
+  goToMatch(previousPassageIndex(navIndex, navPassages.length))
+);
+el.matchNext.addEventListener("click", () =>
+  goToMatch(nextPassageIndex(navIndex, navPassages.length))
+);
+el.sourcesOpen.addEventListener("click", () => {
+  el.sourcesDetails.open = true;
+  el.tuning.open = true;
+  el.tuningOpen.setAttribute("aria-expanded", "true");
+  const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  el.sourcesDetails.scrollIntoView({ behavior: scrollBehavior(reduced), block: "start" });
+  el.sourcesDetails.querySelector("summary")?.focus({ preventScroll: true });
+});
 
 /* ---------- Export: CSV / JSON downloads built from the live report ---------- */
 
@@ -1270,13 +1456,35 @@ el.manuscript.addEventListener("click", (e) => {
   if (target) showTooltip(target);
   else hideTooltip();
 });
-el.manuscript.addEventListener("focusin", (e) => {
-  const target = e.target.closest?.(".hit");
-  if (target) showTooltip(target);
-});
-el.manuscript.addEventListener("focusout", hideTooltip);
 document.addEventListener("scroll", hideTooltip, { capture: true, passive: true });
 window.addEventListener("resize", hideTooltip);
+// Tapping or clicking anywhere outside a highlight dismisses the tooltip
+document.addEventListener("click", (e) => {
+  if (!e.target.closest?.("#tooltip, .hit")) hideTooltip();
+});
+// n/j and p/k step through matches outside form fields; Esc closes the tooltip
+document.addEventListener("keydown", (e) => {
+  const action = shortcutAction(e.key, {
+    tagName: e.target?.tagName,
+    isContentEditable: Boolean(e.target?.isContentEditable),
+    ctrlKey: e.ctrlKey,
+    metaKey: e.metaKey,
+    altKey: e.altKey,
+  });
+  if (!action) return;
+  if (action === "close") {
+    clearTimeout(navTooltipTimer);
+    hideTooltip();
+    return;
+  }
+  if (el.report.hidden || !navPassages.length) return;
+  e.preventDefault();
+  goToMatch(
+    action === "next"
+      ? nextPassageIndex(navIndex, navPassages.length)
+      : previousPassageIndex(navIndex, navPassages.length)
+  );
+});
 
 /* ---------- Tuning: adjustable matching settings ---------- */
 
@@ -1672,6 +1880,7 @@ el.forgetOcr.addEventListener("click", async () => {
 el.restart.addEventListener("click", () => {
   state.report = null;
   state.base = null;
+  refreshNavigator();
   rematchRun++;
   clearTimeout(rematchTimer);
   el.manuscript.replaceChildren();
