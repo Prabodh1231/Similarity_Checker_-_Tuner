@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="description"
+      content="Compare a Word manuscript with your own PDF sources entirely in the browser. Nothing is uploaded."
+    />
+    <meta name="color-scheme" content="light dark" />
+    <title>Private Similarity Check</title>
+    <!-- Placeholder until the product has its own name and icon -->
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="css/styles.css" />
+  </head>
+  <body>
+    <header class="masthead">
+      <a class="brand" href="./" aria-label="Private Similarity Check home">
+        <span class="wordmark">Private <em>Similarity</em> Check</span>
+      </a>
+      <p class="masthead-note">
+        <span class="pulse" aria-hidden="true"></span>
+        Runs entirely in your browser · nothing is uploaded
+      </p>
+    </header>
+
+    <div id="protocol-warning" class="banner" hidden>
+      This page was opened straight from disk, so the browser blocks the
+      background workers it needs. Serve the folder instead, for example with
+      <code>npx serve .</code> or <code>python -m http.server</code>.
+    </div>
+
+    <main>
+      <!-- Step 1: choose files -->
+      <section id="intake" class="intake" aria-labelledby="intake-title">
+        <div class="lede-block">
+          <p class="kicker">Before you submit</p>
+          <h1 id="intake-title">
+            Read your draft <em>against</em> the papers you read.
+          </h1>
+          <p class="lede">
+            Add one Word manuscript and the PDFs you drew on. Every passage that
+            lines up with a source is marked in that source's ink, right here in
+            your browser.
+          </p>
+        </div>
+
+        <div class="trays" id="trays">
+          <section class="tray" aria-labelledby="docx-title">
+            <header class="tray-head">
+              <span class="tray-num">01</span>
+              <h2 id="docx-title">Manuscript</h2>
+              <span class="tray-hint">.docx · one file</span>
+            </header>
+
+            <label class="drop" id="docx-drop">
+              <input id="docx-input" type="file" accept=".docx" class="visually-hidden" />
+              <span class="art art-sheet" aria-hidden="true"></span>
+              <span class="drop-text">
+                <strong>Drop your draft here</strong>
+                <span>or <u>choose a file</u></span>
+              </span>
+            </label>
+
+            <div class="docx-card" id="docx-card" hidden>
+              <span class="art art-sheet small" aria-hidden="true"></span>
+              <div class="docx-meta">
+                <p class="docx-name" id="docx-name"></p>
+                <p class="docx-words" id="docx-words"></p>
+              </div>
+              <button type="button" class="text-btn" id="docx-remove">Remove</button>
+            </div>
+          </section>
+
+          <section class="tray" aria-labelledby="pdf-title">
+            <header class="tray-head">
+              <span class="tray-num">02</span>
+              <h2 id="pdf-title">Sources</h2>
+              <span class="tray-hint">.pdf · files or whole folders</span>
+            </header>
+
+            <div class="drop compact-when-filled" id="pdf-drop" tabindex="0" role="button" aria-label="Choose PDF source files">
+              <input id="pdf-input" type="file" accept=".pdf,application/pdf" multiple class="visually-hidden" />
+              <input id="folder-input" type="file" webkitdirectory multiple class="visually-hidden" />
+              <span class="art art-stack" aria-hidden="true"></span>
+              <span class="drop-text">
+                <strong>Drop PDFs or folders here</strong>
+                <span>
+                  or <label for="pdf-input" class="pick">choose files</label>
+                  · <label for="folder-input" class="pick" title="Subfolders are included. Your browser may call this an upload; the files stay on this device.">choose a folder</label>
+                </span>
+              </span>
+            </div>
+
+            <ol class="ledger" id="pdf-ledger"></ol>
+            <p class="ledger-foot" id="pdf-foot" hidden>
+              <span id="pdf-total"></span>
+              <button type="button" class="text-btn" id="pdf-clear">Clear all</button>
+            </p>
+          </section>
+        </div>
+
+        <div class="intake-actions">
+          <button type="button" class="btn-ink" id="compare" disabled>
+            <span id="compare-label">Compare</span>
+            <span class="arrow" aria-hidden="true">→</span>
+          </button>
+          <p class="intake-status" id="intake-status" role="status" aria-live="polite"></p>
+        </div>
+        <p class="intake-settings" id="intake-settings" hidden>
+          Custom matching settings are on.
+          <button type="button" class="text-btn" id="intake-reset">Use the defaults</button>
+        </p>
+
+        <details class="method">
+          <summary>How the matching works</summary>
+          <div class="method-body">
+            <ol>
+              <li>
+                <strong>Clean.</strong> Both documents are lowercased and
+                stripped of accents and punctuation.
+              </li>
+              <li>
+                <strong>Window overlap.</strong> The manuscript is read in
+                overlapping 13-word windows and each source in 11-word windows,
+                one word at a time across the <em>whole</em> PDF. When a pair
+                shares 8 or more distinct words, in any order, those manuscript
+                words are marked.
+              </li>
+              <li>
+                <strong>Phrase overlap.</strong> With common words removed, every
+                3-word phrase is compared. A source sharing at least 21 phrases
+                also gets credit for phrases that only it contains.
+              </li>
+              <li>
+                <strong>Score.</strong> The similarity is the share of manuscript
+                words marked by the sources you leave switched on.
+              </li>
+            </ol>
+            <p>
+              It finds copied and lightly reworded text, not paraphrase. A
+              match is a prompt to look, not a verdict.
+            </p>
+          </div>
+        </details>
+      </section>
+
+      <!-- Step 2: progress -->
+      <section id="working" class="working" hidden aria-labelledby="working-title">
+        <p class="kicker">Reading sources</p>
+        <h2 id="working-title">Starting…</h2>
+        <div class="working-bar" aria-hidden="true"><span id="working-fill"></span></div>
+
+        <div class="ocr-ask" id="ocr-ask" role="group" aria-labelledby="ocr-ask-title" hidden>
+          <p class="ocr-ask-title" id="ocr-ask-title"></p>
+          <p class="ocr-ask-detail" id="ocr-ask-detail"></p>
+          <div class="ocr-ask-actions">
+            <button type="button" class="btn-ink small" id="ocr-run">Read scanned pages</button>
+            <button type="button" class="text-btn" id="ocr-skip">Skip them</button>
+          </div>
+        </div>
+        <ol class="ledger work-ledger" id="work-ledger"></ol>
+      </section>
+
+      <!-- Step 3: report -->
+      <section id="report" class="report" hidden aria-label="Similarity report">
+        <aside class="findings" aria-labelledby="findings-title">
+          <p class="kicker" id="findings-title">Similarity</p>
+          <p class="score" id="score">
+            <span id="score-value">0</span><span class="score-unit">%</span>
+          </p>
+          <p class="verdict">
+            <span class="verdict-tag" id="verdict"></span>
+            <span id="flagged"></span>
+          </p>
+
+          <div class="spectrum" aria-hidden="true">
+            <div class="spectrum-bar" id="spectrum"></div>
+            <div class="spectrum-ticks">
+              <span id="tick-moderate" style="left: 10%">10</span>
+              <span id="tick-high" style="left: 25%">25</span>
+            </div>
+          </div>
+
+          <p class="settings-note" id="settings-note" hidden></p>
+
+          <details class="tuning" id="tuning">
+            <summary>
+              <span>Tune matching</span>
+              <span class="tuning-state" id="tuning-state">Default settings</span>
+            </summary>
+            <div class="tuning-body">
+              <p class="tuning-intro">
+                Try stricter or looser matching and watch the score and
+                highlights change. Only the matching re-runs; PDFs aren't read
+                again. Your settings are remembered for future checks in this
+                browser.
+              </p>
+              <div id="tuning-controls"></div>
+              <div class="tuning-foot">
+                <p class="tuning-compare" id="tuning-compare"></p>
+                <button type="button" class="text-btn" id="tuning-reset">Reset to defaults</button>
+              </div>
+              <p class="tuning-status" id="tuning-status" role="status" aria-live="polite"></p>
+            </div>
+          </details>
+
+          <div class="sources-head">
+            <h3>Sources</h3>
+            <button type="button" class="text-btn" id="toggle-all">Hide all</button>
+          </div>
+          <ul class="source-list" id="source-list"></ul>
+
+          <div id="quiet-sources" hidden>
+            <h4 class="quiet-title">No overlap or unreadable</h4>
+            <ul class="quiet-list" id="quiet-list"></ul>
+          </div>
+
+          <p class="fineprint">
+            Hover any highlight to see its source. Switching a source off removes
+            its highlights and its share of the score. Source figures can add up
+            to more than the total because one passage can appear in several
+            PDFs; a <span class="dotted">dotted underline</span> marks those.
+          </p>
+
+          <div class="report-actions">
+            <button type="button" class="btn-ink small" id="print">Save as PDF</button>
+            <button type="button" class="text-btn" id="restart">← Edit files</button>
+          </div>
+        </aside>
+
+        <article class="page" aria-labelledby="page-title">
+          <header class="running-head">
+            <span id="page-title"></span>
+            <span id="page-meta"></span>
+          </header>
+          <div id="manuscript" class="manuscript"></div>
+        </article>
+      </section>
+    </main>
+
+    <footer class="colophon">
+      <p>
+        PDFs are read with PDF.js, Word files with Mammoth and scanned pages
+        with Tesseract. All of them run inside this tab.
+      </p>
+      <p>
+        Text read from scanned pages is remembered in this browser so it isn't
+        read twice.
+        <button type="button" class="text-btn" id="forget-ocr">Forget it</button>
+      </p>
+    </footer>
+
+    <div id="tooltip" class="tooltip" role="tooltip" hidden></div>
+
+    <script src="js/vendor/mammoth.browser.js"></script>
+    <script type="module" src="js/app.js"></script>
+  </body>
+</html>
