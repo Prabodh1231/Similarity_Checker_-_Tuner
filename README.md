@@ -10,6 +10,9 @@ MatchMark compares one Word manuscript (`.docx`) with any number of source PDFs,
 in the browser. Nothing is uploaded: PDFs are read with PDF.js and the
 manuscript with Mammoth, inside the tab.
 
+**Try it live: <https://prabodh1231.github.io/matchmark/>** — no install. Press
+**Try a sample**, then **Compare**. Your own files never leave your device.
+
 ## Running it
 
 The page uses module Web Workers, which browsers block on `file://`, so serve
