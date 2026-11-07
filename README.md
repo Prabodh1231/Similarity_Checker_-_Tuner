@@ -53,15 +53,15 @@ Tesseract, running in the tab like everything else.
 1. **Find.** While reading text layers, a page counts as scanned when it has
    fewer than 30 letters and the PDF contains images. The image check reads
    the file's raw bytes for `/Subtype /Image` rather than asking PDF.js, which
-   would decode every image. That makes the first pass 0.4 s instead of 7.7 s
-   for 30 scanned pages.
+   would decode every image. The first pass takes about 0.4 s for 30 scanned
+   pages.
 2. **Ask.** If scanned pages are found, the progress screen says how many and
    estimates the time, using the speed measured on this computer after the
    first run. **Skip them** lists fully scanned PDFs as "Scanned, not read".
 3. **Read.** Pages are drawn at 200 DPI and recognised by up to 8 OCR engines
    in parallel (2 on machines with 4 GB of memory or less). Large PDFs are split
    into page ranges so one long scan uses every engine. Blank sheets are
-   detected and skipped (about 0.2 s instead of several seconds).
+   detected and skipped (about 0.2 s each).
 4. **Remember.** Each page's text is saved in this browser's IndexedDB, keyed
    by the file's SHA-256, so a scan is only ever read once. **Forget it** in
    the footer deletes it all.
@@ -96,8 +96,7 @@ tolerates a few wrong words because a match needs 8 shared words out of 11.
   anywhere else, or press Escape, to dismiss it.
 - **Move through matches** with the **Previous match** / **Next match**
   buttons and the "Match 3 of 12" counter next to the score (or the keys
-  `n`/`j` and `p`/`k` outside form fields). Highlights are no longer
-  individual tab stops. The current passage is outlined, scrolled into view
+  `n`/`j` and `p`/`k` outside form fields). The current passage is outlined, scrolled into view
   (gently, unless reduced motion is preferred), named with its source and
   page in a live summary, and its tooltip is pinned once scrolling settles.
   The passage list is rebuilt whenever sources are switched off, matching is
@@ -155,19 +154,13 @@ app keeps each source's cleaned text after a comparison for this.
 - In the report, with custom settings, the panel shows what the **default
   settings would give**, for the same sources switched on. That comparison is
   hidden on the start screen, where no comparison has run yet.
-- **Default settings have changed:** the reference list is now ignored by
-  default, so scores from this version are not directly comparable with
-  scores from earlier versions unless you switch "Ignore the reference list"
-  off. Quoted text is still counted unless you switch "Ignore quoted text"
-  on.
 - Settings are remembered in this browser and used for future comparisons.
   The start screen's panel (and its note) says when custom settings are on,
   with a one-click way back.
 - With custom settings, the report shows (and prints) a note listing them, so a
   shared report always says how it was made.
 - Settings are checked and clamped (`normalizeSettings` in `js/matching.js`),
-  so saved values from an older version or impossible combinations can't break
-  matching.
+  so saved or impossible values can't break matching.
 
 ## How matching works
 
@@ -199,20 +192,6 @@ All steps live in [js/matching.js](js/matching.js).
    above that high. Each source's own percentage can overlap with another's,
    because one passage can appear in several PDFs. The bar under the score
    gives each word to one source only, so its segments add up to the total.
-
-## Changes from the original checker
-
-| Original | Here |
-|---|---|
-| PDFs over 10,000 words were sampled, skipping most of the text | Every window of every PDF is checked |
-| Each PDF window flagged only the first matching manuscript window | All matching windows are flagged, so a passage copied twice is marked twice |
-| A word repeated inside a window was flagged once, leaving holes ("by the middle of ___ century") | Every occurrence is flagged |
-| Trigrams only affected results when more than 15 PDFs were uploaded | Always used |
-| A repeated trigram highlighted only its first position; trigram keys could collide ("ab"+"c" = "a"+"bc") | Every position; keys are space-separated |
-| Lone stop words next to a passage were highlighted | Dropped |
-| Hover showed only the first matching file | Hover lists every source that contains the word |
-| Fixed batches of 2 PDFs per worker with polling | A worker pool that takes PDFs from a queue and reuses the manuscript index |
-| Scanned PDFs gave no text | Read with OCR, on request |
 
 Known limits: it finds copied and lightly reworded text, not paraphrase or
 translation. OCR reads English only. A PDF with no text and no images (a blank

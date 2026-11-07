@@ -238,7 +238,7 @@ test("normalizeSettings keeps every setting usable", () => {
     (({ moderateFrom, highFrom }) => ({ moderateFrom, highFrom }))(normalizeSettings({ moderateFrom: 30, highFrom: 20 })),
     { moderateFrom: 30, highFrom: 30 }
   );
-  // Unknown keys are dropped, so saved settings from an older version can't break anything
+  // Unknown keys are dropped, so stale saved settings can't break anything
   assert.ok(!("bogus" in normalizeSettings({ bogus: 1 })));
 });
 
