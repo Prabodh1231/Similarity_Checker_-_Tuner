@@ -17,6 +17,13 @@ import {
   dropStrayStopWords,
   summarize,
   similarityLevel,
+  isReferenceHeadingText,
+  isReferenceHeadingBlock,
+  findReferenceHeadingIndex,
+  markQuotedParts,
+  exclusionSummary,
+  findWindowMatchesWithPositions,
+  findTrigramPositions,
   STOP_WORDS,
 } from "../js/matching.js";
 
@@ -207,6 +214,8 @@ test("default settings match the documented values", () => {
     phraseGate: 21,
     phrasesUniqueOnly: true,
     dropLoneStopWords: true,
+    ignoreReferenceList: true,
+    ignoreQuotedText: false,
     moderateFrom: 10,
     highFrom: 25,
   });
@@ -273,4 +282,75 @@ test("finalizeMatches follows the phrase and stop-word settings", () => {
   assert.deepEqual(run({ phrasesUniqueOnly: false }).map(sorted), [[0, 1, 2, 6, 7, 8], [6, 7, 8]]);
   // Phrase check off: only window matches remain, and keeping lone stop words keeps "the"
   assert.deepEqual(run({ phrases: false, dropLoneStopWords: false }).map(sorted), [[4], []]);
+});
+
+test("reference headings are recognised by normalised text and block shape", () => {
+  for (const text of ["References", "BIBLIOGRAPHY.", "Works Cited", "Reference List", "Sources", "Literature Cited"]) {
+    assert.ok(isReferenceHeadingText(text), text);
+  }
+  assert.ok(!isReferenceHeadingText("References and further reading"));
+  assert.ok(isReferenceHeadingBlock({ tagName: "H2", text: "Bibliography" }));
+  assert.ok(isReferenceHeadingBlock({ tagName: "p", text: "Works Cited", bold: true }));
+  assert.ok(!isReferenceHeadingBlock({ tagName: "p", text: "Works Cited", bold: false }));
+  assert.ok(!isReferenceHeadingBlock({ tagName: "p", text: "Sources of inspiration for this long chapter title", bold: true }));
+  assert.equal(
+    findReferenceHeadingIndex([
+      { tagName: "p", text: "An ordinary paragraph" },
+      { tagName: "h3", text: "Literature Cited" },
+    ]),
+    1
+  );
+});
+
+test("quoted parts are tracked across straight and curly quotation marks", () => {
+  assert.deepEqual(
+    markQuotedParts(['"alpha', 'beta"', "gamma", "“delta", "epsilon”", "zeta"]),
+    [true, true, false, true, true, false]
+  );
+});
+
+test("excluded words are removed by finalizeMatches and left out of the count", () => {
+  const words = toWords("alpha beta gamma delta epsilon");
+  words[3].inQuotedText = true;
+  words[4].inReferenceList = true;
+  const results = [{ windowIds: [0, 1, 2, 3, 4], sharedTrigrams: [] }];
+
+  const both = normalizeSettings({ ignoreReferenceList: true, ignoreQuotedText: true });
+  assert.deepEqual([...finalizeMatches(results, new Map(), words, both)[0]].sort((a, b) => a - b), [0, 1, 2]);
+  const summary = exclusionSummary(words, both);
+  assert.equal(summary.totalWords, 5);
+  assert.equal(summary.countedWords, 3);
+  assert.equal(summary.ignoredWords, 2);
+  assert.equal(summary.referenceListIgnoredWords, 1);
+  assert.equal(summary.quotedIgnoredWords, 1);
+
+  const counted = normalizeSettings({ ignoreReferenceList: false, ignoreQuotedText: false });
+  assert.deepEqual(
+    [...finalizeMatches(results, new Map(), words, counted)[0]].sort((a, b) => a - b),
+    [0, 1, 2, 3, 4]
+  );
+  assert.equal(exclusionSummary(words, counted).countedWords, 5);
+});
+
+test("window matches with positions agree with findWindowMatches and locate the source window", () => {
+  const sentence = "rising sea levels pose a serious threat to coastal infrastructure worldwide today";
+  const manuscript = toWords(`original opening words here ${sentence} original closing words`);
+  const source = tokenizeText(`filler one two three ${sentence} trailing filler words`);
+  const windows = createDocxWindows(manuscript);
+  const index = buildWindowIndex(windows);
+  const detailed = findWindowMatchesWithPositions(windows, index, source);
+  const plain = new Set(findWindowMatches(windows, index, source));
+  assert.deepEqual([...detailed.ids].sort((a, b) => a - b), [...plain].sort((a, b) => a - b));
+  const threat = manuscript.find((word) => word.content === "threat");
+  const position = detailed.positions.get(threat.id);
+  assert.ok(position, "position recorded");
+  assert.ok(source.slice(position.sourceStart, position.sourceStart + 11).includes("threat"));
+  assert.ok(position.shared >= DEFAULT_SETTINGS.windowMatch);
+});
+
+test("trigram positions point at the first occurrence in the source", () => {
+  const source = tokenizeText("filler words alpha beta gamma more filler alpha beta gamma");
+  const positions = findTrigramPositions(source, ["alpha beta gamma", "absent trigram here"]);
+  assert.equal(positions.get("alpha beta gamma"), 2);
+  assert.ok(!positions.has("absent trigram here"));
 });

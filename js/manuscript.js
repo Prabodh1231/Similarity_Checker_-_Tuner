@@ -1,4 +1,8 @@
-import { cleanWord } from "./matching.js";
+import {
+  cleanWord,
+  isReferenceHeadingBlock,
+  quoteFlagForPart,
+} from "./matching.js";
 
 /**
  * Converts a DOCX file to sanitised HTML with Mammoth.
@@ -34,6 +38,25 @@ export function buildManuscript(html) {
   root.className = "manuscript-body";
   root.append(...Array.from(doc.body.childNodes, (node) => document.importNode(node, true)));
 
+  // The first reference-list heading (a heading element, or a short
+  // standalone bold paragraph) excludes everything from there on. Words
+  // keep the flag so the score can honour the setting without a re-read.
+  const isBoldParagraph = (el) => {
+    const boldText = Array.from(el.querySelectorAll("strong, b"))
+      .map((node) => cleanWord(node.textContent))
+      .join(" ")
+      .replace(/\s+/g, "");
+    return Boolean(boldText) && boldText === cleanWord(el.textContent).replace(/\s+/g, "");
+  };
+  const referenceStartElement =
+    Array.from(root.querySelectorAll("h1, h2, h3, h4, h5, h6, p")).find((el) =>
+      isReferenceHeadingBlock({
+        tagName: el.tagName,
+        text: el.textContent,
+        bold: el.tagName === "P" && isBoldParagraph(el),
+      })
+    ) || null;
+
   const words = [];
   const spans = [];
   const gaps = [];
@@ -44,8 +67,15 @@ export function buildManuscript(html) {
 
   let pendingGap = null; // whitespace after a word, waiting for the next word (may cross nodes)
   let afterWord = false; // whether the previous emitted token was a word
+  let inReferenceList = false; // everything from the reference heading on
+  const quoteState = { open: false }; // inside “…” / "…" quotation marks
 
   for (const node of textNodes) {
+    if (referenceStartElement && referenceStartElement.contains(node)) inReferenceList = true;
+    let inQuotedBlock = false;
+    for (let el = node.parentElement; el && el !== root; el = el.parentElement) {
+      if (el.tagName === "BLOCKQUOTE" || el.tagName === "Q") inQuotedBlock = true;
+    }
     const fragment = document.createDocumentFragment();
 
     for (const part of node.data.split(/(\s+)/)) {
@@ -68,6 +98,7 @@ export function buildManuscript(html) {
         continue;
       }
 
+      const quotedByMarks = quoteFlagForPart(part, quoteState);
       const content = cleanWord(part);
       if (!/[\p{L}\p{N}]/u.test(content)) {
         pendingGap = null;
@@ -81,7 +112,12 @@ export function buildManuscript(html) {
       span.className = "w";
       span.dataset.i = id;
       span.textContent = part;
-      words.push({ id, content });
+      words.push({
+        id,
+        content,
+        ...(inReferenceList ? { inReferenceList: true } : {}),
+        ...(inQuotedBlock || quotedByMarks ? { inQuotedText: true } : {}),
+      });
       spans.push(span);
       fragment.append(span);
       afterWord = true;

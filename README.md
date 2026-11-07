@@ -79,8 +79,12 @@ tolerates a few wrong words because a match needs 8 shared words out of 11.
 
 ## Using the report
 
-- **Hover** any highlight to see the PDF(s) it was found in. On touch screens,
-  tap it.
+- **Hover** any highlight to see the PDF(s) it was found in: for each source
+  the tooltip names the PDF, gives the page number(s) of the match and shows
+  a short excerpt (about 25 words) of the matched source passage, with the
+  shared words emphasised. Page numbers come from word offsets recorded per
+  page (text layer and OCR pages alike) when the PDF was first read, so they
+  survive re-matching. On touch screens, tap a highlight instead.
 - **Switch a source off** with its toggle. Its highlights disappear, its
   percentage is replaced by "off", and the overall score is recalculated
   without it. Words it shared with another source switch to that source's
@@ -89,6 +93,18 @@ tolerates a few wrong words because a match needs 8 shared words out of 11.
   name to jump to its first match. Sources partly read by OCR say so under
   their name.
 - **Save as PDF** prints the report (switched-off sources are left out).
+- **Download CSV** / **Download JSON** save the results as a file, built in
+  the tab like everything else. JSON carries the manuscript name, date,
+  settings used, overall similarity, counted and ignored word counts, the
+  level, per-source figures with their matched pages, and every matched
+  passage with the sources and pages behind it. CSV is a header row plus one
+  row per source. Both honour the sources currently switched off and the
+  current settings; CSV cells that would look like a spreadsheet formula are
+  prefixed with an apostrophe.
+- Words excluded by the settings below (the reference list, quoted text)
+  stay visible in the manuscript, slightly muted, but are never highlighted
+  and are left out of the word count the percentage is based on; the report
+  says how many words were ignored and why.
 
 ## Tune matching (settings sandbox)
 
@@ -108,12 +124,19 @@ app keeps each source's cleaned text after a comparison for this.
 | Phrases a source must share | 21 | Below this, a source's shared phrases are ignored |
 | Only phrases unique to one source | on | Off credits a shared phrase to every source containing it |
 | Ignore lone common words | on | Unmark a lone "the"/"of" next to a real passage |
+| Ignore the reference list | on | Everything from a References / Bibliography / Works Cited / Reference List / Sources / Literature Cited heading (a heading, or a short standalone bold paragraph) onwards is neither highlighted nor counted |
+| Ignore quoted text | off | Words inside quotation marks or block quotes are neither highlighted nor counted |
 | Moderate from / High from | 10% / 25% | Where the level labels change; applied instantly, no re-match |
 
 - Sources keep their colour and on/off state while you adjust.
 - In the report, with custom settings, the panel shows what the **default
   settings would give**, for the same sources switched on. That comparison is
   hidden on the start screen, where no comparison has run yet.
+- **Default settings have changed:** the reference list is now ignored by
+  default, so scores from this version are not directly comparable with
+  scores from earlier versions unless you switch "Ignore the reference list"
+  off. Quoted text is still counted unless you switch "Ignore quoted text"
+  on.
 - Settings are remembered in this browser and used for future comparisons.
   The start screen's panel (and its note) says when custom settings are on,
   with a one-click way back.
@@ -144,7 +167,11 @@ All steps live in [js/matching.js](js/matching.js).
    common across the field isn't attributed to everyone.
 4. **Tidy.** A flagged stop word ("the", "of"…) with no flagged neighbour is
    dropped. Window matching sweeps these in from next to a real passage.
-5. **Score.** Overall similarity = flagged words ÷ manuscript words, counting
+5. **Exclude.** Manuscript words flagged as reference-list or quoted text
+   (see `js/manuscript.js`) are removed from every source's flagged set when
+   the matching settings say to ignore them, so they are never highlighted.
+6. **Score.** Overall similarity = flagged words ÷ counted manuscript words
+   (manuscript words minus any ignored ones), counting
    only the sources switched on. Below 10% is low, below 25% moderate, and
    above that high. Each source's own percentage can overlap with another's,
    because one passage can appear in several PDFs. The bar under the score
@@ -178,10 +205,14 @@ js/intake.js             walks dropped folders, sorts files into manuscript/sour
 js/manuscript.js         DOCX → HTML → one <span> per word
 js/matcher.worker.js     PDF text extraction, OCR of scanned pages and matching, off the main thread
 js/matching.js           the matching algorithm (pure functions)
+js/passages.js           page boundaries, offset→page lookup, passage excerpts (pure functions)
+js/export.js             CSV/JSON serialisation of a report (pure functions)
 js/ocr-cache.js          remembers OCR text per page in IndexedDB
 js/scan-detect.js        finds whether a PDF contains images, from its raw bytes
 js/vendor/               PDF.js 4.6.82, Mammoth, Tesseract.js 6.0.1 (core 6.1.2, English data)
 tests/matching.test.mjs  unit tests, including exact checks against brute force across settings
+tests/passages.test.mjs  page lookup, page lists and source excerpts
+tests/export.test.mjs    JSON/CSV export, including formula-injection guards
 tests/intake.test.mjs    folder walking (nested, batched, unreadable files) and sorting
 tests/scan-detect.test.mjs  image detection, including real fixture PDFs
 tests/make_fixtures.py   builds sample files (scanned ones need Pillow)

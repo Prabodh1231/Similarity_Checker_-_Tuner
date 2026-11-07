@@ -1373,6 +1373,11 @@ h1 em {
   text-underline-offset: 4px;
 }
 
+/* Words excluded by the current settings stay readable, but muted */
+.manuscript .w.excluded {
+  color: #8c8273;
+}
+
 .manuscript.spotlight .hit {
   background-color: transparent;
 }
@@ -1441,6 +1446,44 @@ h1 em {
   height: 10px;
   border-radius: 2px;
   background: var(--hl);
+}
+
+.tooltip li.tooltip-source {
+  display: block;
+}
+
+.tooltip li.tooltip-source + li.tooltip-source {
+  margin-top: 10px;
+}
+
+.tooltip-source-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tooltip-page {
+  margin-left: auto;
+  flex: none;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: #b9af9f;
+}
+
+.tooltip-excerpt {
+  margin: 5px 0 0 18px;
+  font-family: var(--serif);
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: #d8d0c2;
+}
+
+.tooltip-excerpt strong {
+  padding: 0 1px;
+  border-radius: 2px;
+  background: rgba(244, 238, 228, 0.22);
+  color: #fffdf7;
+  font-weight: 600;
 }
 
 /* ---------- Footer ---------- */

@@ -4,11 +4,13 @@ import {
   tokenizeText,
   createDocxWindows,
   buildWindowIndex,
-  findWindowMatches,
+  findWindowMatchesWithPositions,
+  findTrigramPositions,
   buildDocxTrigrams,
   buildTrigramSet,
   findSharedTrigrams,
 } from "./matching.js";
+import { buildPageBoundaries } from "./passages.js";
 import { fileHash, readCachedPages, saveCachedPage } from "./ocr-cache.js";
 import { containsImages } from "./scan-detect.js";
 
@@ -46,7 +48,13 @@ onmessage = async ({ data }) => {
     else if (data.type === "match") {
       // Re-match text kept from an earlier read, e.g. after a settings change
       const words = data.text ? data.text.split(" ") : [];
-      postMessage({ type: "result", job: data.job, wordCount: words.length, ...matchWords(words) });
+      postMessage({
+        type: "result",
+        job: data.job,
+        wordCount: words.length,
+        pageBoundaries: data.pageBoundaries || [],
+        ...matchWords(words),
+      });
     }
   } catch (error) {
     // Some libraries reject with nothing at all, so never assume an Error
@@ -78,8 +86,12 @@ async function readSource({ job, buffer, ocrText = {} }) {
   const ocr = { ...saved, ...ocrText };
   const missingPages = scanned.filter((n) => !(n in ocr));
 
-  const text = pages.map((page, i) => (i + 1 in ocr ? ocr[i + 1] : page.text)).join(" ");
-  const words = tokenizeText(text);
+  // Tokenise page by page (text layer or OCR alike) so every page keeps its
+  // word offsets in the cleaned text; a rematch can then show page numbers
+  // and excerpts without opening the PDF again.
+  const pageWords = pages.map((page, i) => tokenizeText(i + 1 in ocr ? ocr[i + 1] : page.text));
+  const pageBoundaries = buildPageBoundaries(pageWords.map((page) => page.length));
+  const words = pageWords.flat();
   if (words.length === 0 && missingPages.length === 0) {
     throw new Error("No extractable text (blank or image-free PDF?)");
   }
@@ -92,6 +104,7 @@ async function readSource({ job, buffer, ocrText = {} }) {
     wordCount: words.length,
     ...matchWords(words),
     text: words.join(" "), // kept by the page so settings changes can re-match without re-reading
+    pageBoundaries, // word offsets per page, kept alongside the cleaned text
     pageCount: pages.length,
     ocrPages: Object.keys(ocr).length,
     missingPages,
@@ -101,11 +114,23 @@ async function readSource({ job, buffer, ocrText = {} }) {
 /** Both matching signals for one source, with this worker's settings. */
 function matchWords(words) {
   const { settings, windows, index, trigramTexts } = manuscript;
+  const windowMatch = findWindowMatchesWithPositions(
+    windows,
+    index,
+    words,
+    settings.pdfWindow,
+    settings.windowMatch
+  );
+  const sharedTrigrams = settings.phrases
+    ? findSharedTrigrams(trigramTexts, buildTrigramSet(words), settings.phraseGate)
+    : [];
   return {
-    windowIds: findWindowMatches(windows, index, words, settings.pdfWindow, settings.windowMatch),
-    sharedTrigrams: settings.phrases
-      ? findSharedTrigrams(trigramTexts, buildTrigramSet(words), settings.phraseGate)
-      : [],
+    windowIds: windowMatch.ids,
+    // Best source window per flagged manuscript word, plus where each
+    // shared phrase first occurs, so highlights can show page and excerpt
+    windowPositions: windowMatch.positions,
+    sharedTrigrams,
+    trigramPositions: settings.phrases ? findTrigramPositions(words, sharedTrigrams) : new Map(),
   };
 }
 

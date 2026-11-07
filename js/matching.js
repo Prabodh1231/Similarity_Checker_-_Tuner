@@ -19,6 +19,8 @@ export const DEFAULT_SETTINGS = Object.freeze({
   phraseGate: 21, // trigrams a source must share before any count
   phrasesUniqueOnly: true, // credit only trigrams found in exactly one source
   dropLoneStopWords: true, // unflag stop words with no flagged neighbour
+  ignoreReferenceList: true, // exclude everything from a References/Bibliography heading on
+  ignoreQuotedText: false, // exclude quotation-mark and blockquote text
   moderateFrom: 10, // overall % where "moderate" starts
   highFrom: 25, // overall % where "high" starts
 });
@@ -50,6 +52,8 @@ export function normalizeSettings(input = {}) {
     phraseGate: clampInt(s.phraseGate, 1, 200, d.phraseGate),
     phrasesUniqueOnly: Boolean(s.phrasesUniqueOnly),
     dropLoneStopWords: Boolean(s.dropLoneStopWords),
+    ignoreReferenceList: Boolean(s.ignoreReferenceList),
+    ignoreQuotedText: Boolean(s.ignoreQuotedText),
     moderateFrom,
     highFrom,
   };
@@ -58,6 +62,103 @@ export function normalizeSettings(input = {}) {
 /** Whether every setting is at its default. */
 export const isDefaultSettings = (settings) =>
   Object.keys(DEFAULT_SETTINGS).every((key) => settings[key] === DEFAULT_SETTINGS[key]);
+
+/* ---------- Excluded text: reference lists and quotations ---------- */
+
+export const REFERENCE_HEADING_TEXTS = new Set([
+  "references",
+  "bibliography",
+  "works cited",
+  "reference list",
+  "sources",
+  "literature cited",
+]);
+
+/** Whether normalised text is exactly a reference-list heading. */
+export function isReferenceHeadingText(text = "") {
+  return REFERENCE_HEADING_TEXTS.has(cleanWord(text));
+}
+
+/**
+ * Whether a block looks like a reference-list heading: any heading element,
+ * or a short standalone paragraph whose text is entirely bold.
+ * @param {{tagName?: string, tag?: string, text?: string, bold?: boolean, isBold?: boolean, allBold?: boolean}} block
+ */
+export function isReferenceHeadingBlock(block = {}) {
+  if (!isReferenceHeadingText(block.text || "")) return false;
+  const tag = String(block.tagName || block.tag || "").toLowerCase();
+  if (/^h[1-6]$/.test(tag)) return true;
+  if (tag !== "p") return false;
+  const bold = Boolean(block.bold ?? block.isBold ?? block.allBold);
+  const wordCount = cleanWord(block.text || "").split(" ").filter(Boolean).length;
+  return bold && wordCount <= 6;
+}
+
+/** Index of the first reference-list heading block, or -1. */
+export function findReferenceHeadingIndex(blocks = []) {
+  return Array.from(blocks).findIndex((block) => isReferenceHeadingBlock(block));
+}
+
+/**
+ * Updates a running quotation state for one whitespace-delimited part and
+ * says whether a word in that part sits inside quotation marks. Handles
+ * straight double quotes and curly/angle quotes; a blockquote is handled by
+ * the caller. The state object is mutated: quoteFlagForPart(part, state).
+ * @param {string} part
+ * @param {{open: boolean}} state
+ */
+export function quoteFlagForPart(part, state = { open: false }) {
+  let quoted = false;
+  for (const char of String(part)) {
+    if (char === "“" || char === "«" || char === "‘") state.open = true;
+    else if (char === "”" || char === "»" || char === "’") state.open = false;
+    else if (char === '"') state.open = !state.open;
+    else if (/[\p{L}\p{N}]/u.test(char) && state.open) quoted = true;
+  }
+  return quoted;
+}
+
+/** Quoted flags for a sequence of whitespace-delimited parts. */
+export function markQuotedParts(parts = []) {
+  const state = { open: false };
+  return Array.from(parts, (part) => quoteFlagForPart(part, state));
+}
+
+/**
+ * Ids excluded under the settings: reference-list words when
+ * ignoreReferenceList is on, quoted words when ignoreQuotedText is on.
+ * Words carry inReferenceList / inQuotedText flags (see manuscript.js).
+ */
+export function getExcludedWordIds(words = [], settings = DEFAULT_SETTINGS) {
+  const excluded = new Set();
+  words.forEach((word, index) => {
+    const id = word.id ?? index;
+    if (
+      (settings.ignoreReferenceList && word.inReferenceList) ||
+      (settings.ignoreQuotedText && word.inQuotedText)
+    ) {
+      excluded.add(id);
+    }
+  });
+  return excluded;
+}
+
+/** Counted/ignored word totals for a manuscript under the settings. */
+export function exclusionSummary(words = [], settings = DEFAULT_SETTINGS) {
+  const excludedIds = getExcludedWordIds(words, settings);
+  return {
+    totalWords: words.length,
+    countedWords: words.length - excludedIds.size,
+    ignoredWords: excludedIds.size,
+    referenceListIgnoredWords: settings.ignoreReferenceList
+      ? words.filter((word) => word.inReferenceList).length
+      : 0,
+    quotedIgnoredWords: settings.ignoreQuotedText
+      ? words.filter((word) => word.inQuotedText).length
+      : 0,
+    excludedIds,
+  };
+}
 
 /**
  * Normalises text for comparison: strips accents and punctuation,
@@ -244,6 +345,108 @@ export function findWindowMatches(
 }
 
 /**
+ * Like findWindowMatches, but also records, for every flagged manuscript
+ * word, the best matching source window: the one sharing the most distinct
+ * words (earliest on a tie). Positions are source word offsets, so they can
+ * be turned into page numbers and excerpts without re-reading the PDF.
+ * @returns {{ids: number[], positions: Map<number, {sourceStart: number, shared: number}>}}
+ */
+export function findWindowMatchesWithPositions(
+  windows,
+  index,
+  sourceWords,
+  windowSize = DEFAULT_SETTINGS.pdfWindow,
+  threshold = DEFAULT_SETTINGS.windowMatch
+) {
+  const overlap = new Int32Array(windows.length);
+  const inWindow = new Map();
+  const active = new Set();
+  const matched = new Set();
+  const positions = new Map();
+
+  const add = (word) => {
+    const count = inWindow.get(word) || 0;
+    inWindow.set(word, count + 1);
+    if (count > 0) return;
+    const postings = index.get(word);
+    if (!postings) return;
+    for (const w of postings) {
+      if (++overlap[w] === threshold) active.add(w);
+    }
+  };
+
+  const remove = (word) => {
+    const count = inWindow.get(word);
+    if (count > 1) {
+      inWindow.set(word, count - 1);
+      return;
+    }
+    inWindow.delete(word);
+    const postings = index.get(word);
+    if (!postings) return;
+    for (const w of postings) {
+      if (overlap[w]-- === threshold) active.delete(w);
+    }
+  };
+
+  const collect = (sourceStart) => {
+    for (const w of active) {
+      const shared = overlap[w];
+      const { contents, ids } = windows[w];
+      for (let i = 0; i < contents.length; i++) {
+        if (!inWindow.has(contents[i])) continue;
+        for (const id of ids[i]) {
+          matched.add(id);
+          const current = positions.get(id);
+          if (
+            !current ||
+            shared > current.shared ||
+            (shared === current.shared && sourceStart < current.sourceStart)
+          ) {
+            positions.set(id, { sourceStart, shared });
+          }
+        }
+      }
+    }
+  };
+
+  const firstEnd = Math.min(windowSize, sourceWords.length);
+  for (let i = 0; i < firstEnd; i++) add(sourceWords[i]);
+  collect(0);
+
+  for (let i = windowSize; i < sourceWords.length; i++) {
+    remove(sourceWords[i - windowSize]);
+    add(sourceWords[i]);
+    collect(i - windowSize + 1);
+  }
+
+  return { ids: Array.from(matched), positions };
+}
+
+/**
+ * First source position (original word offset) of each wanted trigram.
+ * Stop words are removed exactly as in buildTrigramSet, but each kept word
+ * remembers its offset in the unfiltered source word list.
+ * @param {string[]} sourceWords
+ * @param {Iterable<string>} trigramTexts
+ * @returns {Map<string, number>}
+ */
+export function findTrigramPositions(sourceWords, trigramTexts) {
+  const wanted = new Set(trigramTexts);
+  const found = new Map();
+  if (wanted.size === 0) return found;
+  const content = [];
+  sourceWords.forEach((word, offset) => {
+    if (!STOP_WORDS.has(word)) content.push({ word, offset });
+  });
+  for (let i = 0; i + 2 < content.length && found.size < wanted.size; i++) {
+    const text = `${content[i].word} ${content[i + 1].word} ${content[i + 2].word}`;
+    if (wanted.has(text) && !found.has(text)) found.set(text, content[i].offset);
+  }
+  return found;
+}
+
+/**
  * Builds the manuscript's trigrams (stop words removed). Every occurrence of a
  * repeated trigram is kept, so all copies can be highlighted.
  * @param {Array<{id: number, content: string}>} words
@@ -344,9 +547,12 @@ export function finalizeMatches(results, docxTrigrams, words, settings) {
     docxTrigrams,
     { uniqueOnly: settings.phrasesUniqueOnly }
   );
-  return settings.dropLoneStopWords
+  const dropped = settings.dropLoneStopWords
     ? combined.map((ids) => dropStrayStopWords(ids, words))
     : combined;
+  const excluded = getExcludedWordIds(words, settings);
+  if (excluded.size === 0) return dropped;
+  return dropped.map((ids) => new Set(Array.from(ids).filter((id) => !excluded.has(id))));
 }
 
 /**

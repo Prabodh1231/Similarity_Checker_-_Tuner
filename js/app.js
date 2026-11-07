@@ -6,7 +6,15 @@ import {
   finalizeMatches,
   summarize,
   similarityLevel,
+  exclusionSummary,
 } from "./matching.js";
+import {
+  buildExcerpt,
+  formatPagesList,
+  groupWordIds,
+  pagesForWordOffsets,
+} from "./passages.js";
+import { serializeExportCsv, serializeExportJson } from "./export.js";
 import { docxToHtml, buildManuscript } from "./manuscript.js";
 import { collectEntries, fromFileList, sortIncoming, splitPath } from "./intake.js";
 import { clearOcrCache } from "./ocr-cache.js";
@@ -82,6 +90,8 @@ const el = {
   quietSources: $("quiet-sources"),
   quietList: $("quiet-list"),
   print: $("print"),
+  exportCsv: $("export-csv"),
+  exportJson: $("export-json"),
   restart: $("restart"),
   pageTitle: $("page-title"),
   pageMeta: $("page-meta"),
@@ -481,14 +491,34 @@ function buildSources(readable, settings, previous = []) {
       ids: idSets[i],
       wordCount: result.wordCount,
       ocrPages: result.ocrPages || 0,
+      text: result.text || "",
+      pageBoundaries: result.pageBoundaries || [],
+      windowPositions: result.windowPositions,
+      trigramPositions: result.trigramPositions,
+      sharedTrigrams: result.sharedTrigrams || [],
     }))
     .filter((source) => source.ids.size > 0)
     .sort((a, b) => b.ids.size - a.ids.size || a.path.localeCompare(b.path))
-    .map((source) => ({
-      ...source,
-      color: before.get(source.path)?.color ?? freshInk(),
-      enabled: before.get(source.path)?.enabled ?? true,
-    }));
+    .map((source) => {
+      const positions = matchPositions(source, docxTrigrams);
+      const groups = groupWordIds(Array.from(source.ids));
+      const groupById = new Map();
+      for (const group of groups) {
+        for (const id of group.ids) groupById.set(id, group);
+      }
+      return {
+        ...source,
+        positions,
+        groups,
+        groupById,
+        pages: pagesForWordOffsets(
+          source.pageBoundaries,
+          Array.from(source.ids, (id) => positions.get(id)).filter((v) => v !== undefined)
+        ),
+        color: before.get(source.path)?.color ?? freshInk(),
+        enabled: before.get(source.path)?.enabled ?? true,
+      };
+    });
 
   const noOverlap = readable
     .filter((result, i) => idSets[i].size === 0 && !result.missingPages?.length)
@@ -497,6 +527,39 @@ function buildSources(readable, settings, previous = []) {
 }
 
 const idsByPath = (sources) => new Map(sources.map((source) => [source.path, source.ids]));
+
+const mapOrObjectEntries = (value) =>
+  value instanceof Map ? value.entries() : Object.entries(value || {});
+
+/**
+ * Best source word offset for each flagged manuscript word of a source:
+ * shared-phrase positions first, then window positions (which win, as they
+ * are the stronger signal).
+ */
+function matchPositions(result, docxTrigrams) {
+  const positions = new Map();
+  const put = (id, value, overwrite = false) => {
+    const wordId = Number(id);
+    const sourceStart = Number(value?.sourceStart ?? value);
+    if (!Number.isFinite(wordId) || !Number.isFinite(sourceStart)) return;
+    if (overwrite || !positions.has(wordId)) positions.set(wordId, sourceStart);
+  };
+  for (const [text, offset] of mapOrObjectEntries(result.trigramPositions)) {
+    for (const id of docxTrigrams.get(text) || []) put(id, offset);
+  }
+  for (const [id, position] of mapOrObjectEntries(result.windowPositions)) {
+    put(id, position, true);
+  }
+  return positions;
+}
+
+/** A source's kept cleaned words as a list, split once and cached. */
+function sourceWordList(source) {
+  if (!source.wordListCache) {
+    source.wordListCache = source.text ? source.text.split(" ") : [];
+  }
+  return source.wordListCache;
+}
 
 function setWorking(title, fraction) {
   el.workingTitle.textContent = title;
@@ -862,7 +925,11 @@ function renderSourceRow(source, s) {
   // same-named files apart) and whether OCR supplied some of its text
   const { dir, base } = splitPath(source.path);
   name.textContent = base;
-  const notes = [dir, source.ocrPages ? `${plural(source.ocrPages, "page")} read by OCR` : ""];
+  const notes = [
+    dir,
+    source.ocrPages ? `${plural(source.ocrPages, "page")} read by OCR` : "",
+    source.pages?.length ? `matched ${formatPagesList(source.pages)}` : "",
+  ];
   if (notes.some(Boolean)) {
     const folder = document.createElement("span");
     folder.className = "path-dir source-dir";
@@ -908,12 +975,18 @@ const formatPercent = (value) =>
 function applyToggles() {
   const report = state.report;
   const { spans, sources, sourcesOf, words } = report;
+  const exclusion = exclusionSummary(words, state.base.settings);
   const summary = summarize(
     sources.map((s) => s.ids),
     sources.map((s) => s.enabled),
-    words.length
+    exclusion.countedWords
   );
   report.primary = summary.primary;
+  report.summary = summary;
+  report.exclusion = exclusion;
+  words.forEach((word, id) => {
+    spans[id]?.classList.toggle("excluded", exclusion.excludedIds.has(word.id ?? id));
+  });
 
   for (const [id, list] of sourcesOf) {
     const span = spans[id];
@@ -951,11 +1024,21 @@ function applyToggles() {
   el.tickHigh.style.left = `${settings.highFrom}%`;
   el.tickHigh.textContent = settings.highFrom;
   el.tickHigh.hidden = settings.highFrom === settings.moderateFrom;
-  showSettingsComparison(sources, words.length);
+  showSettingsComparison(sources, exclusion.countedWords);
   el.scoreValue.textContent = formatPercent(summary.overallPercent);
   el.verdict.className = `verdict-tag ${level}`;
   el.verdict.textContent = level;
-  el.flagged.textContent = `${numberFormat.format(summary.flaggedWords)} of ${numberFormat.format(words.length)} words match the sources switched on.`;
+  const ignoredReasons = [];
+  if (exclusion.referenceListIgnoredWords) ignoredReasons.push("reference list");
+  if (exclusion.quotedIgnoredWords) ignoredReasons.push("quoted text");
+  el.flagged.textContent =
+    `${numberFormat.format(summary.flaggedWords)} of ${numberFormat.format(exclusion.countedWords)} words match the sources switched on.` +
+    (exclusion.ignoredWords
+      ? ` ${plural(exclusion.ignoredWords, "word")} ignored (${ignoredReasons.join(" and ")}).`
+      : "");
+  el.pageMeta.textContent =
+    `${numberFormat.format(exclusion.countedWords)} counted words` +
+    (exclusion.ignoredWords ? ` · ${plural(exclusion.ignoredWords, "word")} ignored` : "");
 
   el.spectrum.replaceChildren(
     ...sources
@@ -1021,6 +1104,80 @@ function jumpTo(s) {
   span.classList.add("flash");
 }
 
+/* ---------- Export: CSV / JSON downloads built from the live report ---------- */
+
+/** Raw export input honouring the sources currently switched on and the current settings. */
+function currentExportInput() {
+  const report = state.report;
+  if (!report?.summary) return null;
+  const { sources, summary, exclusion } = report;
+
+  const enabled = sources.map((source) => source.enabled);
+  const flaggedIds = new Set();
+  sources.forEach((source, s) => {
+    if (enabled[s]) for (const id of source.ids) flaggedIds.add(id);
+  });
+
+  const matchedPassages = groupWordIds(Array.from(flaggedIds)).map((group) => ({
+    manuscriptExcerpt: group.ids.map((id) => report.spans[id].textContent).join(" "),
+    startWordIndex: group.start,
+    sources: sources.flatMap((source, s) => {
+      if (!enabled[s]) return [];
+      const ids = group.ids.filter((id) => source.ids.has(id));
+      if (!ids.length) return [];
+      return [
+        {
+          name: source.path,
+          pages: pagesForWordOffsets(
+            source.pageBoundaries,
+            ids.map((id) => source.positions.get(id)).filter((v) => v !== undefined)
+          ),
+        },
+      ];
+    }),
+  }));
+
+  return {
+    manuscriptName: state.docx.file.name,
+    date: new Date(),
+    settings: { ...state.base.settings },
+    settingsDescription: describeSettings(state.base.settings),
+    overallPercent: summary.overallPercent,
+    countedWords: exclusion.countedWords,
+    ignoredWords: exclusion.ignoredWords,
+    totalWords: exclusion.totalWords,
+    ignoredBreakdown: {
+      referenceList: exclusion.referenceListIgnoredWords,
+      quotedText: exclusion.quotedIgnoredWords,
+    },
+    level: similarityLevel(summary.overallPercent, state.base.settings),
+    sources: sources.map((source, s) => ({
+      name: source.path,
+      enabled: source.enabled,
+      percent: summary.sourcePercent[s],
+      flaggedWords: source.ids.size,
+      pages: source.pages,
+    })),
+    matchedPassages,
+  };
+}
+
+function downloadText(filename, text, type) {
+  const url = URL.createObjectURL(new Blob([text], { type }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.append(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+function exportFilename(extension) {
+  const base = state.docx.file.name.replace(/\.docx$/i, "").replace(/[\\/:*?"<>|]/g, "-");
+  return `${base || "manuscript"}-similarity.${extension}`;
+}
+
 /* ---------- Tooltip: which PDF a highlight came from ---------- */
 
 // A gap shows the sources of the word before it
@@ -1037,12 +1194,50 @@ function showTooltip(target) {
   label.textContent = list.length > 1 ? `Found in ${list.length} sources` : "Found in";
   const ul = document.createElement("ul");
   for (const s of list) {
+    const source = report.sources[s];
+    const group = source.groupById?.get(id) || { start: id, end: id, ids: [id] };
+    const pages = pagesForWordOffsets(
+      source.pageBoundaries,
+      group.ids.map((gid) => source.positions?.get(gid)).filter((v) => v !== undefined)
+    );
+
     const li = document.createElement("li");
-    li.style.setProperty("--hl", report.sources[s].color);
+    li.className = "tooltip-source";
+    li.style.setProperty("--hl", source.color);
+
+    const head = document.createElement("span");
+    head.className = "tooltip-source-head";
     const swatch = document.createElement("i");
-    const label = document.createElement("span");
-    label.append(pathLabel(report.sources[s].path));
-    li.append(swatch, label);
+    const name = document.createElement("span");
+    name.append(pathLabel(source.path));
+    const page = document.createElement("span");
+    page.className = "tooltip-page";
+    page.textContent = pages.length ? formatPagesList(pages) : "page unknown";
+    head.append(swatch, name, page);
+    li.append(head);
+
+    const at = source.positions?.get(id);
+    if (at !== undefined) {
+      const excerpt = buildExcerpt(sourceWordList(source), at, {
+        sharedWords: new Set(group.ids.map((gid) => report.words[gid].content)),
+        boundaries: source.pageBoundaries,
+      });
+      const p = document.createElement("p");
+      p.className = "tooltip-excerpt";
+      if (excerpt.start > 0) p.append("… ");
+      excerpt.words.forEach((word, i) => {
+        if (i) p.append(document.createTextNode(" "));
+        if (word.shared) {
+          const strong = document.createElement("strong");
+          strong.textContent = word.text;
+          p.append(strong);
+        } else {
+          p.append(document.createTextNode(word.text));
+        }
+      });
+      if (excerpt.end < excerpt.totalWords) p.append(" …");
+      li.append(p);
+    }
     ul.append(li);
   }
   el.tooltip.replaceChildren(label, ul);
@@ -1159,6 +1354,18 @@ const TUNING_CONTROLS = [
     type: "check",
     label: "Ignore lone common words",
     hint: "Unmark a single “the” or “of” caught next to a real passage.",
+  },
+  {
+    key: "ignoreReferenceList",
+    type: "check",
+    label: "Ignore the reference list",
+    hint: "Everything from a References, Bibliography, Works Cited, Reference List, Sources or Literature Cited heading onwards stays visible but is never highlighted or counted.",
+  },
+  {
+    key: "ignoreQuotedText",
+    type: "check",
+    label: "Ignore quoted text",
+    hint: "Words inside quotation marks or block quotes stay visible but are never highlighted or counted.",
   },
   { key: "moderateFrom", type: "number", min: 0, max: 100, label: "Moderate from", rematch: false },
   { key: "highFrom", type: "number", min: 0, max: 100, label: "High from", rematch: false },
@@ -1296,6 +1503,8 @@ function describeSettings(s) {
       ? `phrase check from ${s.phraseGate} shared phrases${s.phrasesUniqueOnly ? "" : ", credited to every source"}`
       : "phrase check off",
     s.dropLoneStopWords ? "lone common words ignored" : "lone common words kept",
+    s.ignoreReferenceList ? "reference list ignored" : "reference list counted",
+    s.ignoreQuotedText ? "quoted text ignored" : "quoted text counted",
     `moderate from ${s.moderateFrom}%, high from ${s.highFrom}%`,
   ].join("; ");
 }
@@ -1354,6 +1563,9 @@ async function rematch() {
     ...result,
     windowIds: matched[i].windowIds || [],
     sharedTrigrams: matched[i].sharedTrigrams || [],
+    windowPositions: matched[i].windowPositions,
+    trigramPositions: matched[i].trigramPositions,
+    pageBoundaries: matched[i].pageBoundaries || result.pageBoundaries || [],
   }));
   const { sources, noOverlap } = buildSources(base.readable, settings, state.report.sources);
   showSources(sources, [...noOverlap, ...base.unread]);
@@ -1363,7 +1575,9 @@ async function rematch() {
 /** Runs matching on kept source text, without reading any PDF. */
 function matchTexts(readable, settings) {
   return runPool(
-    readable.map((result) => ({ message: { type: "match", text: result.text } })),
+    readable.map((result) => ({
+      message: { type: "match", text: result.text, pageBoundaries: result.pageBoundaries || [] },
+    })),
     state.base.manuscript.words,
     () => {},
     { settings }
@@ -1404,7 +1618,8 @@ function showSettingsComparison(sources, totalWords) {
       if (enabled.get(path) !== true) continue;
       for (const id of ids) flagged.add(id);
     }
-    const percent = totalWords ? (flagged.size / totalWords) * 100 : 0;
+    const defaultCounted = exclusionSummary(state.base.manuscript.words, DEFAULT_SETTINGS).countedWords;
+    const percent = defaultCounted ? (flagged.size / defaultCounted) * 100 : 0;
     el.tuningCompare.textContent = `Default settings would give ${formatPercent(percent)}%.`;
   }
 }
@@ -1430,6 +1645,18 @@ el.intakeReset.addEventListener("click", () => applySettings(normalizeSettings()
 /* ---------- Report actions ---------- */
 
 el.print.addEventListener("click", () => window.print());
+
+el.exportCsv.addEventListener("click", () => {
+  const input = currentExportInput();
+  if (input) downloadText(exportFilename("csv"), serializeExportCsv(input), "text/csv;charset=utf-8");
+});
+
+el.exportJson.addEventListener("click", () => {
+  const input = currentExportInput();
+  if (input) {
+    downloadText(exportFilename("json"), serializeExportJson(input), "application/json;charset=utf-8");
+  }
+});
 
 el.forgetOcr.addEventListener("click", async () => {
   try {
