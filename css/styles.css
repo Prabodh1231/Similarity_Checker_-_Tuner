@@ -281,10 +281,10 @@ main {
   display: none;
 }
 
-.manuscript .w.current {
-  outline: 2px solid var(--page-ink);
-  outline-offset: 2px;
-  border-radius: 2px;
+/* One continuous rule above and below the current passage, spaces included */
+.manuscript .w.current,
+.manuscript .gap.current {
+  box-shadow: 0 -2px 0 var(--page-ink), 0 2px 0 var(--page-ink);
 }
 
 /* ---------- Masthead ---------- */
@@ -1661,7 +1661,7 @@ h1 em {
 /* Tooltip */
 .tooltip {
   position: fixed;
-  z-index: 10;
+  z-index: 40;
   max-width: min(340px, calc(100vw - 24px));
   padding: 10px 12px;
   border-radius: var(--radius);

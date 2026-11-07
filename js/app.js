@@ -1297,6 +1297,15 @@ function clearCurrentMatch() {
   }
 }
 
+/** Marks a passage's words, and the spaces between them, as the current match. */
+function markCurrentMatch(passage) {
+  const ids = new Set(passage.ids);
+  for (const id of ids) state.report.spans[id]?.classList.add("current");
+  for (const gap of state.report.gaps) {
+    if (ids.has(gap.left) && ids.has(gap.right)) gap.el.classList.add("current");
+  }
+}
+
 /** "smith.pdf, p. 4" style summary of where a passage was found. */
 function passageSummary(passage) {
   const report = state.report;
@@ -1344,11 +1353,7 @@ function refreshNavigator() {
   navPassages = buildPassages(state.report.primary.keys());
   navIndex = resolvePassageIndex(navPassages, navIndex, navAnchorStart);
   navAnchorStart = navIndex >= 0 ? navPassages[navIndex].start : null;
-  if (navIndex >= 0) {
-    for (const id of navPassages[navIndex].ids) {
-      state.report.spans[id]?.classList.add("current");
-    }
-  }
+  if (navIndex >= 0) markCurrentMatch(navPassages[navIndex]);
   updateNavigatorUI();
 }
 
@@ -1358,7 +1363,7 @@ function goToMatch(index) {
   navIndex = index;
   navAnchorStart = passage.start;
   clearCurrentMatch();
-  for (const id of passage.ids) state.report.spans[id]?.classList.add("current");
+  markCurrentMatch(passage);
   updateNavigatorUI();
 
   const span = state.report.spans[passage.start];
