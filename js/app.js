@@ -25,23 +25,14 @@ import {
   shortcutAction,
 } from "./navigate.js";
 import { serializeExportCsv, serializeExportJson } from "./export.js";
+import { patternFor, sourceColor, sourceLabel } from "./palette.js";
 import { docxToHtml, buildManuscript } from "./manuscript.js";
 import { collectEntries, fromFileList, sortIncoming, splitPath } from "./intake.js";
 import { clearOcrCache } from "./ocr-cache.js";
 
-// Highlighter inks: light enough to read dark text through, distinct side by side
-const INKS = [
-  "#ffe14d", "#8fe3a6", "#93ccff", "#ffadc9", "#ffb870", "#c9adff",
-  "#6fded2", "#dbe86a", "#ff9f8f", "#a9b9ff", "#f2bdf7", "#b5dd9a",
-  "#ffd09e", "#9adbf2", "#e9c08f", "#d7f27e",
-];
-
-/** Colour for the n-th source; beyond the curated set, step round the hue wheel. */
-function inkFor(n) {
-  if (n < INKS.length) return INKS[n];
-  const hue = Math.round((n * 137.508) % 360);
-  return `hsl(${hue} 85% 76%)`;
-}
+// Highlighter inks live in palette.js, with the labels and patterns that
+// identify each source alongside its colour
+const inkFor = (n) => sourceColor(n);
 
 const $ = (id) => document.getElementById(id);
 const numberFormat = new Intl.NumberFormat();
@@ -89,14 +80,15 @@ const el = {
   tuningCompare: $("tuning-compare"),
   tuningStatus: $("tuning-status"),
   tuningReset: $("tuning-reset"),
-  intakeSettings: $("intake-settings"),
-  intakeReset: $("intake-reset"),
+  tuningCurrent: $("tuning-current"),
   report: $("report"),
   scoreValue: $("score-value"),
   verdict: $("verdict"),
   flagged: $("flagged"),
   spectrum: $("spectrum"),
   toggleAll: $("toggle-all"),
+  colourBlindToggle: $("colourblind-toggle"),
+  patternsToggle: $("patterns-toggle"),
   sourceList: $("source-list"),
   quietSources: $("quiet-sources"),
   quietList: $("quiet-list"),
@@ -116,11 +108,58 @@ const el = {
   sourcesOpen: $("sources-open"),
 };
 
+/* ---------- Source display: colour-blind palette and patterns ---------- */
+
+const COLOUR_BLIND_KEY = "similarity-check.colourBlindSafeColours";
+const PATTERNS_KEY = "similarity-check.patterns";
+
+function loadDisplayPrefs() {
+  try {
+    return {
+      colourBlindSafe: localStorage.getItem(COLOUR_BLIND_KEY) === "1",
+      patterns: localStorage.getItem(PATTERNS_KEY) !== "0", // on unless turned off
+    };
+  } catch {
+    return { colourBlindSafe: false, patterns: true };
+  }
+}
+
+function saveDisplayPrefs() {
+  try {
+    localStorage.setItem(COLOUR_BLIND_KEY, state.display.colourBlindSafe ? "1" : "0");
+    localStorage.setItem(PATTERNS_KEY, state.display.patterns ? "1" : "0");
+  } catch {
+    // Not remembered: the choices still apply to this report
+  }
+}
+
+function syncDisplayToggles() {
+  el.colourBlindToggle.checked = state.display.colourBlindSafe;
+  el.patternsToggle.checked = state.display.patterns;
+}
+
+/** Colour currently shown for the source at list position s. */
+const displayColor = (s) => sourceColor(s, state.display.colourBlindSafe);
+
+/** Layers the source's pattern (when patterns are on) over its colour. */
+function applyPatternStyle(element, s) {
+  if (!state.display.patterns) {
+    element.style.removeProperty("--pattern-image");
+    element.style.removeProperty("--pattern-size");
+    return;
+  }
+  const pattern = patternFor(s);
+  element.style.setProperty("--pattern-image", pattern.backgroundImage);
+  if (pattern.backgroundSize) element.style.setProperty("--pattern-size", pattern.backgroundSize);
+  else element.style.removeProperty("--pattern-size");
+}
+
 const state = {
   docx: null, // { file, html, wordCount }
   pdfs: new Map(), // key -> { file, path } (path includes folders when picked from one)
   showAllPdfs: false,
   settings: null, // matching settings, loaded at start-up (see Tuning)
+  display: loadDisplayPrefs(), // source colours/patterns, loaded at start-up
   base: null, // what the last comparison read, kept so settings changes can re-match
   report: null,
 };
@@ -916,7 +955,7 @@ function renderReport(manuscript, sources, quiet) {
   showSources(sources, quiet);
 }
 
-const mobileReportQuery = window.matchMedia("(max-width: 760px)");
+const mobileReportQuery = window.matchMedia("(max-width: 900px)");
 
 /** On narrow screens Sources starts collapsed; on desktop it stays open. */
 function syncResponsivePanels() {
@@ -948,6 +987,11 @@ function showSources(sources, quiet) {
     gaps: gaps.filter((gap) => sourcesOf.has(gap.left) && sourcesOf.has(gap.right)),
     primary: new Map(),
   };
+
+  sources.forEach((source, s) => {
+    source.color = displayColor(s);
+    source.label = sourceLabel(s);
+  });
 
   el.sourceList.replaceChildren(...sources.map(renderSourceRow));
   el.quietSources.hidden = quiet.length === 0;
@@ -993,6 +1037,9 @@ function renderSourceRow(source, s) {
 
   const chip = document.createElement("span");
   chip.className = "chip";
+  chip.textContent = sourceLabel(s);
+  chip.title = `Source ${sourceLabel(s)}`;
+  applyPatternStyle(chip, s);
 
   const name = document.createElement("button");
   name.type = "button";
@@ -1012,7 +1059,7 @@ function renderSourceRow(source, s) {
     folder.textContent = notes.filter(Boolean).join(" · ");
     name.append(folder);
   }
-  name.title = `${source.path}\nClick to jump to its first match`;
+  name.title = `Source ${sourceLabel(s)}: ${source.path}\nClick to jump to its first match`;
   name.addEventListener("click", () => jumpTo(s));
 
   const pct = document.createElement("span");
@@ -1023,7 +1070,7 @@ function renderSourceRow(source, s) {
   li.addEventListener("mouseleave", clearSpotlight);
   li.addEventListener("focusin", () => spotlight(s));
   li.addEventListener("focusout", clearSpotlight);
-  source.row = { li, input, name, pct };
+  source.row = { li, input, name, pct, chip };
   return li;
 }
 
@@ -1033,14 +1080,19 @@ function clearHighlights() {
   if (!report) return;
   for (const id of report.sourcesOf.keys()) {
     const span = report.spans[id];
-    span.classList.remove("hit", "multi", "lit");
+    span.classList.remove("hit", "multi", "lit", "hit-start");
     span.style.removeProperty("--hl");
+    span.style.removeProperty("--pattern-image");
+    span.style.removeProperty("--pattern-size");
+    delete span.dataset.sourceLabel;
     span.removeAttribute("tabindex");
     span.removeAttribute("aria-label");
   }
   for (const gap of report.gaps) {
     gap.el.classList.remove("hit", "lit");
     gap.el.style.removeProperty("--hl");
+    gap.el.style.removeProperty("--pattern-image");
+    gap.el.style.removeProperty("--pattern-size");
   }
 }
 
@@ -1051,6 +1103,10 @@ const formatPercent = (value) =>
 function applyToggles() {
   const report = state.report;
   const { spans, sources, sourcesOf, words } = report;
+  sources.forEach((source, s) => {
+    source.color = displayColor(s);
+    source.label = sourceLabel(s);
+  });
   const exclusion = exclusionSummary(words, state.base.settings);
   const summary = summarize(
     sources.map((s) => s.ids),
@@ -1060,6 +1116,16 @@ function applyToggles() {
   report.primary = summary.primary;
   report.summary = summary;
   report.exclusion = exclusion;
+  // First flagged word of each passage, for the tiny source-number marker
+  const hitStarts = new Set();
+  let previousId = null;
+  let previousSource = null;
+  for (const id of Array.from(summary.primary.keys()).sort((a, b) => a - b)) {
+    const s = summary.primary.get(id);
+    if (id !== previousId + 1 || s !== previousSource) hitStarts.add(id);
+    previousId = id;
+    previousSource = s;
+  }
   words.forEach((word, id) => {
     spans[id]?.classList.toggle("excluded", exclusion.excludedIds.has(word.id ?? id));
   });
@@ -1068,18 +1134,25 @@ function applyToggles() {
     const span = spans[id];
     const s = summary.primary.get(id);
     if (s === undefined) {
-      span.classList.remove("hit", "multi");
+      span.classList.remove("hit", "multi", "hit-start");
       span.style.removeProperty("--hl");
+      span.style.removeProperty("--pattern-image");
+      span.style.removeProperty("--pattern-size");
+      delete span.dataset.sourceLabel;
       span.removeAttribute("tabindex");
       span.removeAttribute("aria-label");
       continue;
     }
     span.classList.add("hit");
     span.style.setProperty("--hl", sources[s].color);
+    applyPatternStyle(span, s);
+    span.classList.toggle("hit-start", hitStarts.has(id));
+    if (hitStarts.has(id)) span.dataset.sourceLabel = sourceLabel(s);
+    else delete span.dataset.sourceLabel;
     span.classList.toggle("multi", list.filter((i) => sources[i].enabled).length > 1);
     const names = list
       .filter((i) => sources[i].enabled)
-      .map((i) => splitPath(sources[i].path).base);
+      .map((i) => `Source ${sourceLabel(i)}: ${splitPath(sources[i].path).base}`);
     // Highlights are not tab stops: the match navigator is the keyboard path
     span.setAttribute("aria-label", `${span.textContent} — found in ${names.join(", ")}`);
   }
@@ -1088,8 +1161,14 @@ function applyToggles() {
     const left = summary.primary.get(gap.left);
     const same = left !== undefined && left === summary.primary.get(gap.right);
     gap.el.classList.toggle("hit", same);
-    if (same) gap.el.style.setProperty("--hl", sources[left].color);
-    else gap.el.style.removeProperty("--hl");
+    if (same) {
+      gap.el.style.setProperty("--hl", sources[left].color);
+      applyPatternStyle(gap.el, left);
+    } else {
+      gap.el.style.removeProperty("--hl");
+      gap.el.style.removeProperty("--pattern-image");
+      gap.el.style.removeProperty("--pattern-size");
+    }
   }
 
   // Figures
@@ -1120,17 +1199,22 @@ function applyToggles() {
     ...sources
       .map((source, s) => ({ source, width: summary.attributedPercent[s] }))
       .filter(({ width }) => width > 0)
-      .map(({ source, width }) => {
+      .map(({ source, width }, s) => {
         const seg = document.createElement("span");
         seg.style.width = `${width}%`;
-        seg.style.background = source.color;
+        seg.style.backgroundColor = source.color;
+        applyPatternStyle(seg, sources.indexOf(source));
         return seg;
       })
   );
 
   sources.forEach((source, s) => {
-    const { li, input, name, pct } = source.row;
+    const { li, input, name, pct, chip } = source.row;
     li.classList.toggle("off", !source.enabled);
+    li.style.setProperty("--hl", source.color);
+    chip.textContent = sourceLabel(s);
+    chip.title = `Source ${sourceLabel(s)}`;
+    applyPatternStyle(chip, s);
     input.checked = source.enabled;
     name.disabled = !source.enabled;
     const value = summary.sourcePercent[s];
@@ -1148,6 +1232,22 @@ el.toggleAll.addEventListener("click", () => {
   const turnOn = !sources.some((s) => s.enabled);
   sources.forEach((s) => (s.enabled = turnOn));
   applyToggles();
+});
+
+/** Palette and pattern choices apply to the open report straight away. */
+function applyDisplayPreferences() {
+  saveDisplayPrefs();
+  syncDisplayToggles();
+  if (state.report) applyToggles();
+}
+
+el.colourBlindToggle.addEventListener("change", () => {
+  state.display.colourBlindSafe = el.colourBlindToggle.checked;
+  applyDisplayPreferences();
+});
+el.patternsToggle.addEventListener("change", () => {
+  state.display.patterns = el.patternsToggle.checked;
+  applyDisplayPreferences();
 });
 
 /* Hovering a source row lights only that source's passages */
@@ -1214,7 +1314,7 @@ function passageSummary(passage) {
       source.pageBoundaries,
       ids.map((id) => source.positions.get(id)).filter((v) => v !== undefined)
     );
-    return `${splitPath(source.path).base}${pages.length ? `, ${formatPagesList(pages)}` : ", page unknown"}`;
+    return `Source ${sourceLabel(s)}: ${splitPath(source.path).base}${pages.length ? `, ${formatPagesList(pages)}` : ", page unknown"}`;
   });
   return parts.length ? `Found in ${parts.join("; ")}` : "";
 }
@@ -1394,6 +1494,9 @@ function showTooltip(target) {
     const head = document.createElement("span");
     head.className = "tooltip-source-head";
     const swatch = document.createElement("i");
+    swatch.textContent = sourceLabel(s);
+    swatch.style.setProperty("--hl", source.color);
+    applyPatternStyle(swatch, s);
     const name = document.createElement("span");
     name.append(pathLabel(source.path));
     const page = document.createElement("span");
@@ -1691,6 +1794,9 @@ function placeTuning(view) {
   const mount = onIntake ? el.tuningIntakeMount : el.tuningReportMount;
   if (el.tuning.parentNode !== mount) mount.append(el.tuning);
   el.tuning.classList.toggle("on-intake", onIntake);
+  // One state badge per screen: the panel header on the start screen, the
+  // Tune matching button on the report
+  el.tuningState.hidden = !onIntake;
   el.tuningCompare.hidden = onIntake;
   if (onIntake) el.tuningStatus.textContent = "";
   el.tuningOpen.setAttribute("aria-expanded", String(el.tuning.open));
@@ -1720,10 +1826,11 @@ function describeSettings(s) {
 /** Shows whether custom settings are in use, wherever that matters. */
 function updateSettingsNotes() {
   const custom = !isDefaultSettings(state.settings);
-  el.intakeSettings.hidden = !custom;
   el.tuningState.textContent = custom ? "Custom settings" : "Default settings";
   el.tuningState.classList.toggle("custom", custom);
   el.tuningOpenState.textContent = custom ? "Custom settings" : "Default settings";
+  el.tuningCurrent.hidden = !custom;
+  if (custom) el.tuningCurrent.textContent = `Current: ${describeSettings(state.settings)}.`;
   el.tuningReset.disabled = !custom;
 }
 
@@ -1813,6 +1920,8 @@ function showSettingsComparison(sources, totalWords) {
   const custom = !isDefaultSettings(base.settings);
   el.settingsNote.hidden = !custom;
   if (custom) el.settingsNote.textContent = `Custom matching settings: ${describeSettings(base.settings)}.`;
+  el.tuningCurrent.hidden = !custom;
+  if (custom) el.tuningCurrent.textContent = `Current: ${describeSettings(base.settings)}.`;
 
   if (!custom) {
     el.tuningCompare.textContent = "These are the default settings.";
@@ -1841,15 +1950,21 @@ el.tuningReset.addEventListener("click", () => {
 });
 el.tuningOpen.addEventListener("click", () => {
   placeTuning("report");
-  el.tuning.open = true;
-  el.tuningOpen.setAttribute("aria-expanded", "true");
-  el.tuning.querySelector("summary").focus();
+  // The button opens the panel and closes it again
+  el.tuning.open = !el.tuning.open;
+  el.tuningOpen.setAttribute("aria-expanded", String(el.tuning.open));
+  if (el.tuning.open) el.tuning.querySelector("summary").focus();
 });
 el.tuning.addEventListener("toggle", () => {
   el.tuningOpen.setAttribute("aria-expanded", String(el.tuning.open));
 });
-el.intakeReset.addEventListener("click", () => applySettings(normalizeSettings()));
-
+// Escape closes the panel and returns to the button that opened it
+el.tuning.addEventListener("keydown", (event) => {
+  if (event.key !== "Escape" || !el.tuning.open) return;
+  event.stopPropagation();
+  el.tuning.open = false;
+  if (el.tuningOpen.offsetParent !== null) el.tuningOpen.focus();
+});
 /* ---------- Report actions ---------- */
 
 el.print.addEventListener("click", () => window.print());
@@ -1895,4 +2010,5 @@ buildTuning();
 syncTuning(state.settings);
 placeTuning("intake");
 updateSettingsNotes();
+syncDisplayToggles();
 renderIntake();

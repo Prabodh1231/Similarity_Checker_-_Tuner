@@ -56,9 +56,9 @@ test("passageIndexForWord and the counter text", () => {
   assert.equal(passageIndexForWord(passages, 9), 1);
   assert.equal(passageIndexForWord(passages, 5), -1);
   assert.equal(matchCounterText(-1, 0), "No matches");
-  assert.equal(matchCounterText(-1, 1), "1 match");
-  assert.equal(matchCounterText(-1, 12), "12 matches");
-  assert.equal(matchCounterText(2, 12), "Match 3 of 12");
+  assert.equal(matchCounterText(-1, 1), "1 passage");
+  assert.equal(matchCounterText(-1, 12), "12 passages");
+  assert.equal(matchCounterText(2, 12), "Passage 3 of 12");
 });
 
 test("shortcuts navigate only outside form fields; Escape always closes", () => {

@@ -110,10 +110,6 @@
           </button>
           <p class="intake-status" id="intake-status" role="status" aria-live="polite"></p>
         </div>
-        <p class="intake-settings" id="intake-settings" hidden>
-          Custom matching settings are on.
-          <button type="button" class="text-btn" id="intake-reset">Use the defaults</button>
-        </p>
 
         <details class="method">
           <summary>How the matching works</summary>
@@ -185,12 +181,12 @@
             <p class="match-summary" id="match-summary" aria-live="polite"></p>
           </div>
 
+          <button type="button" class="sources-open" id="sources-open">Sources / Tune matching</button>
+          </div>
           <button type="button" class="btn-ink small tuning-open" id="tuning-open" aria-controls="tuning" aria-expanded="false">
             <span>Tune matching</span>
             <span class="tuning-open-state" id="tuning-open-state">Default settings</span>
           </button>
-          <button type="button" class="sources-open" id="sources-open">Sources / Tune matching</button>
-          </div>
 
           <div class="spectrum" aria-hidden="true">
             <div class="spectrum-bar" id="spectrum"></div>
@@ -208,6 +204,7 @@
             <summary>
               <span>Tune matching</span>
               <span class="tuning-state" id="tuning-state">Default settings</span>
+              <span class="tuning-close" aria-hidden="true">Close ✕</span>
             </summary>
             <div class="tuning-body">
               <p class="tuning-intro">
@@ -216,6 +213,7 @@
                 On a report only the matching re-runs; PDFs aren't read again.
                 Your settings are remembered for future checks in this browser.
               </p>
+              <p class="tuning-current" id="tuning-current" hidden></p>
               <div id="tuning-controls"></div>
               <div class="tuning-foot">
                 <p class="tuning-compare" id="tuning-compare"></p>
@@ -230,6 +228,16 @@
           <div class="sources-head">
             <h3>Sources</h3>
             <button type="button" class="text-btn" id="toggle-all">Hide all</button>
+          </div>
+          <div class="display-toggles" aria-label="Source display">
+            <label class="display-toggle">
+              <input type="checkbox" id="colourblind-toggle" />
+              <span>Colour-blind safe colours</span>
+            </label>
+            <label class="display-toggle">
+              <input type="checkbox" id="patterns-toggle" checked />
+              <span>Patterns</span>
+            </label>
           </div>
           <ul class="source-list" id="source-list"></ul>
 

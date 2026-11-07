@@ -843,16 +843,23 @@ h1 em {
 }
 
 .findings {
-  position: sticky;
-  top: 20px;
-  max-height: calc(100vh - 40px);
-  overflow-y: auto;
   padding: 4px 6px 4px 0;
+}
+
+.score-card {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  padding: 20px 12px 22px 0;
+  margin: -16px -12px 0 0; /* reaches past the column edge to cover button shadows */
+  background: var(--desk);
+  /* Soft edge, so content scrolling under the card fades out instead of being cut */
+  box-shadow: 0 14px 12px -6px var(--desk);
 }
 
 .score {
   margin: 0;
-  font-size: 92px;
+  font-size: 76px;
   line-height: 0.95;
   letter-spacing: -0.04em;
   font-variant-numeric: oldstyle-nums proportional-nums;
@@ -860,14 +867,57 @@ h1 em {
 
 .score-unit {
   margin-left: 4px;
-  font-size: 40px;
+  font-size: 28px;
   color: var(--ink-soft);
 }
 
 .verdict {
-  margin: 14px 0 18px;
-  font-size: 16px;
+  margin: 8px 0 10px;
+  font-size: 14px;
   color: var(--ink-soft);
+}
+
+/* The pinned card stays short: the match controls share one row */
+.score-card .match-nav {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+}
+
+.score-card .match-count {
+  flex: 1;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.score-card .nav-word {
+  display: none;
+}
+
+.score-card .nav-short {
+  display: inline;
+}
+
+.score-card .match-summary {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* The Tune matching button sits below the pinned card, not inside it */
+.findings > .tuning-open {
+  margin-top: 14px;
+}
+
+/* In the report the Tune matching button opens the panel; no second bar until then */
+.tuning-mount:not(.tuning-mount-intake) .tuning:not([open]) {
+  display: none;
 }
 
 .verdict-tag {
@@ -915,6 +965,8 @@ h1 em {
 .spectrum-bar span {
   height: 100%;
   border-right: 1px solid rgba(31, 27, 22, 0.35);
+  background-image: var(--pattern-image, none);
+  background-size: var(--pattern-size, auto);
   transition: width 220ms ease;
 }
 
@@ -941,8 +993,9 @@ h1 em {
   border-left: 1px dashed var(--ink-faint);
 }
 
-/* Custom-settings note: also printed, so a report says how it was made */
+/* Custom-settings note for the printed report, so it says how it was made */
 .settings-note {
+  display: none;
   margin: -18px 0 18px;
   padding: 8px 10px;
   border-left: 3px solid var(--level-moderate);
@@ -1021,6 +1074,32 @@ h1 em {
   color: var(--level-moderate);
 }
 
+/* An open panel says how to close it */
+.tuning-close {
+  display: none;
+  flex: none;
+  padding: 3px 10px;
+  border: 1.5px solid currentColor;
+  border-radius: var(--radius);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: none;
+  white-space: nowrap;
+}
+
+.tuning[open] .tuning-close {
+  display: inline-block;
+}
+
+/* In the report the button already shows the settings state */
+.tuning-mount:not(.tuning-mount-intake) .tuning-state {
+  display: none;
+}
+
+.tuning[open] > summary {
+  align-items: center;
+}
+
 .tuning-body {
   padding: 0 14px 14px;
   border-top: 1px solid var(--rule-soft);
@@ -1029,6 +1108,14 @@ h1 em {
 .tuning-intro {
   margin: 12px 0 6px;
   font-size: 13.5px;
+  line-height: 1.45;
+  color: var(--ink-soft);
+}
+
+.tuning-current {
+  margin: 10px 0 2px;
+  font-family: var(--label);
+  font-size: 12.5px;
   line-height: 1.45;
   color: var(--ink-soft);
 }
@@ -1167,6 +1254,30 @@ h1 em {
   text-transform: uppercase;
 }
 
+.display-toggles {
+  display: grid;
+  gap: 7px;
+  padding: 10px 0 12px;
+  border-bottom: 1px solid var(--rule-soft);
+}
+
+.display-toggle {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-family: var(--label);
+  font-size: 13px;
+  color: var(--ink-soft);
+  cursor: pointer;
+}
+
+.display-toggle input {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--pen);
+}
+
 .source-list,
 .quiet-list {
   margin: 0;
@@ -1176,7 +1287,7 @@ h1 em {
 
 .source {
   display: grid;
-  grid-template-columns: auto 14px minmax(0, 1fr) auto;
+  grid-template-columns: auto 22px minmax(0, 1fr) auto;
   align-items: center;
   gap: 10px;
   padding: 10px 0;
@@ -1195,11 +1306,20 @@ h1 em {
 }
 
 .chip {
-  width: 14px;
-  height: 14px;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
   border: 1px solid rgba(31, 27, 22, 0.4);
   border-radius: 2px;
-  background: var(--hl);
+  background-color: var(--hl);
+  background-image: var(--pattern-image, none);
+  background-size: var(--pattern-size, auto);
+  color: #1f1b16;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
 }
 
 .source-name {
@@ -1349,9 +1469,15 @@ h1 em {
 
 .report-actions {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 20px;
+  gap: 10px 18px;
   padding-bottom: 8px;
+}
+
+.report-actions .btn-ink,
+.report-actions .text-btn {
+  white-space: nowrap;
 }
 
 /* The manuscript page */
@@ -1445,6 +1571,8 @@ h1 em {
 /* Highlighter marks */
 .manuscript .hit {
   background-color: var(--hl);
+  background-image: var(--pattern-image, none);
+  background-size: var(--pattern-size, auto);
   -webkit-box-decoration-break: clone;
   box-decoration-break: clone;
 }
@@ -1452,6 +1580,23 @@ h1 em {
 .manuscript .w.hit {
   border-radius: 2px;
   cursor: help;
+}
+
+.manuscript .w.hit-start::before {
+  content: attr(data-source-label);
+  display: inline-block;
+  min-width: 1.35em;
+  margin-right: 4px;
+  padding: 1px 3px;
+  border: 1px solid #1f1b16;
+  border-radius: 3px;
+  color: #1f1b16;
+  font-family: var(--label);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.1;
+  text-align: center;
+  vertical-align: 0.3em;
 }
 
 .manuscript .w.multi {
@@ -1528,11 +1673,21 @@ h1 em {
 }
 
 .tooltip i {
+  display: inline-grid;
   flex: none;
-  width: 10px;
-  height: 10px;
+  place-items: center;
+  width: 18px;
+  height: 18px;
   border-radius: 2px;
-  background: var(--hl);
+  background-color: var(--hl);
+  background-image: var(--pattern-image, none);
+  background-size: var(--pattern-size, auto);
+  color: #1f1b16;
+  font-family: var(--mono);
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 700;
+  line-height: 1;
 }
 
 .tooltip li.tooltip-source {
@@ -1666,7 +1821,7 @@ h1 em {
 }
 
 /* ---------- Mobile report: sticky score bar, manuscript first ---------- */
-@media (max-width: 760px) {
+@media (max-width: 900px) {
   body {
     overflow-x: hidden;
   }
@@ -1717,8 +1872,13 @@ h1 em {
     font-size: 14px;
   }
 
-  .score-card .tuning-open {
+  .findings > .tuning-open {
     display: none;
+  }
+
+  .score-card {
+    align-self: stretch;
+    margin-right: 0;
   }
 
   .score-card .match-nav {
@@ -1910,8 +2070,16 @@ h1 em {
     break-inside: avoid;
   }
 
+  .score-card {
+    position: static;
+  }
+
+  .settings-note {
+    display: block;
+  }
+
   .source {
-    grid-template-columns: 14px minmax(0, 1fr) auto;
+    grid-template-columns: 22px minmax(0, 1fr) auto;
   }
 
   .source.off {
@@ -1929,7 +2097,8 @@ h1 em {
 
   .manuscript .hit,
   .chip,
-  .spectrum-bar span {
+  .spectrum-bar span,
+  .manuscript .w.hit-start::before {
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
   }

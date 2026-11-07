@@ -76,11 +76,13 @@ export function passageIndexForWord(passages = [], wordId) {
 
 /** The live counter text for the navigator. */
 export function matchCounterText(index, count) {
+  // The count is of passages (separate highlighted stretches of the draft),
+  // not of files, so a source can account for several of them.
   if (!Number.isFinite(count) || count <= 0) return "No matches";
   if (!Number.isFinite(index) || index < 0) {
-    return `${count} match${count === 1 ? "" : "es"}`;
+    return `${count} passage${count === 1 ? "" : "s"}`;
   }
-  return `Match ${index + 1} of ${count}`;
+  return `Passage ${index + 1} of ${count}`;
 }
 
 const FORM_TAGS = new Set(["INPUT", "TEXTAREA", "SELECT"]);

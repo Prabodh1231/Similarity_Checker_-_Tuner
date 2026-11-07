@@ -87,6 +87,26 @@ tolerates a few wrong words because a match needs 8 shared words out of 11.
 
 ## Using the report
 
+The report page scrolls as one. On wide screens the score and the match
+navigator stay pinned at the top of the sidebar while the sources and the
+Tune matching panel scroll with the page; there is no second scrollbar.
+
+- **Tell sources apart without colour alone.** Sources are numbered in list
+  order, and the number appears in the swatch next to each source, in the
+  tooltip for a highlight, and as a tiny superscript at the start of each
+  highlighted passage (the highlight's accessible label names its sources the
+  same way). Each source also has its own pattern — diagonal stripes, dots,
+  crosshatch, vertical or horizontal stripes — drawn over its colour on its
+  highlights, its swatch and its segment of the bar under the score, cycling
+  when there are more sources than patterns. A passage found in several
+  sources keeps its dotted underline. Patterns are subtle tints, and every
+  colour in both palettes keeps the dark text at WCAG AA contrast.
+- **Colour-blind safe colours** and **Patterns**, next to the Sources heading,
+  restyle the open report straight away, without re-matching. The first swaps
+  in an Okabe-Ito based palette (orange, sky blue, bluish green, yellow, blue,
+  vermillion, reddish purple, grey); the second turns the patterns off and
+  leaves plain colours. Both choices are remembered in this browser; patterns
+  are on unless you turn them off.
 - **Hover** any highlight to see the PDF(s) it was found in: for each source
   the tooltip names the PDF, gives the page number(s) of the match and shows
   a short excerpt (about 25 words) of the matched source passage, with the
@@ -95,14 +115,16 @@ tolerates a few wrong words because a match needs 8 shared words out of 11.
   survive re-matching. On touch screens, tap a highlight instead; tap
   anywhere else, or press Escape, to dismiss it.
 - **Move through matches** with the **Previous match** / **Next match**
-  buttons and the "Match 3 of 12" counter next to the score (or the keys
-  `n`/`j` and `p`/`k` outside form fields). The current passage is outlined, scrolled into view
+  buttons and the "Passage 3 of 12" counter next to the score (or the keys
+  `n`/`j` and `p`/`k` outside form fields). A passage is one separate
+  highlighted stretch of your draft, so a single source can account for
+  several. The current passage is outlined, scrolled into view
   (gently, unless reduced motion is preferred), named with its source and
   page in a live summary, and its tooltip is pinned once scrolling settles.
   The passage list is rebuilt whenever sources are switched off, matching is
   re-run or settings change, keeping the current position where it can;
   with nothing switched on it says "No matches".
-- **On a narrow screen** (760 px and below) the score becomes a compact
+- **On a narrow screen** (900 px and below) the score becomes a compact
   sticky bar with the percentage, level, match navigator and a **Sources /
   Tune matching** button; the manuscript comes next, and Sources and Tune
   matching follow it as collapsible sections that start collapsed. Tap
@@ -110,7 +132,7 @@ tolerates a few wrong words because a match needs 8 shared words out of 11.
 - **Switch a source off** with its toggle. Its highlights disappear, its
   percentage is replaced by "off", and the overall score is recalculated
   without it. Words it shared with another source switch to that source's
-  colour.
+  number, colour and pattern.
 - **Hover a source row** to light up only that source's passages; click its
   name to jump to its first match. Sources partly read by OCR say so under
   their name.
@@ -132,7 +154,9 @@ tolerates a few wrong words because a match needs 8 shared words out of 11.
 
 The same **Tune matching** panel appears on the start screen, above
 **Compare**, and in the report, where the **Tune matching** button under the
-score opens it. You can adjust it before a comparison or afterwards. In the
+score opens it. One badge says whether the settings are the defaults or
+custom: on the panel header on the start screen, and on the **Tune matching**
+button in the report. You can adjust it before a comparison or afterwards. In the
 report, every change re-runs only the matching on the text already read, so it
 takes tens of milliseconds; PDFs aren't read again and OCR isn't repeated. The
 app keeps each source's cleaned text after a comparison for this.
@@ -150,15 +174,15 @@ app keeps each source's cleaned text after a comparison for this.
 | Ignore quoted text | off | Words inside quotation marks or block quotes are neither highlighted nor counted |
 | Moderate from / High from | 10% / 25% | Where the level labels change; applied instantly, no re-match |
 
-- Sources keep their colour and on/off state while you adjust.
+- Sources keep their number, colour, pattern and on/off state while you adjust.
 - In the report, with custom settings, the panel shows what the **default
   settings would give**, for the same sources switched on. That comparison is
   hidden on the start screen, where no comparison has run yet.
 - Settings are remembered in this browser and used for future comparisons.
-  The start screen's panel (and its note) says when custom settings are on,
-  with a one-click way back.
-- With custom settings, the report shows (and prints) a note listing them, so a
-  shared report always says how it was made.
+  **Reset to defaults** in the panel is the one-click way back.
+- With custom settings, the panel body carries a short **Current:** line
+  listing them, and the printed report carries the same note, so a shared
+  report always says how it was made.
 - Settings are checked and clamped (`normalizeSettings` in `js/matching.js`),
   so saved or impossible values can't break matching.
 
@@ -208,6 +232,7 @@ js/manuscript.js         DOCX → HTML → one <span> per word
 js/matcher.worker.js     PDF text extraction, OCR of scanned pages and matching, off the main thread
 js/matching.js           the matching algorithm (pure functions)
 js/passages.js           page boundaries, offset→page lookup, passage excerpts (pure functions)
+js/palette.js            source numbers, colours (default and colour-blind safe) and patterns (pure functions)
 js/navigate.js           match-navigator passages, wrap-around, shortcuts (pure functions)
 js/export.js             CSV/JSON serialisation of a report (pure functions)
 js/ocr-cache.js          remembers OCR text per page in IndexedDB
@@ -216,6 +241,7 @@ js/vendor/               PDF.js 4.6.82, Mammoth, Tesseract.js 6.0.1 (core 6.1.2,
 tests/matching.test.mjs  unit tests, including exact checks against brute force across settings
 samples/                 the bundled manuscript and PDFs loaded by "Try a sample"
 tests/passages.test.mjs  page lookup, page lists and source excerpts
+tests/palette.test.mjs   source labels, palette contrast and pattern cycling
 tests/navigate.test.mjs  navigator grouping, wrap-around, position keeping, shortcuts
 tests/export.test.mjs    JSON/CSV export, including formula-injection guards
 tests/intake.test.mjs    folder walking (nested, batched, unreadable files) and sorting
